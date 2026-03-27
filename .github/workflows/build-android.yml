@@ -2,7 +2,7 @@ name: Build Android
 
 on:
   push:
-    branches: [master, cloud-paste]
+    branches: [cloud-paste]
     paths: ['android/**']
   workflow_dispatch:
 
@@ -14,6 +14,8 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: cloud-paste
 
       - uses: actions/setup-java@v4
         with:
