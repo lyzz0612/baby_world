@@ -7,7 +7,7 @@
 | 分支 | 说明 |
 |------|------|
 | `master` | 默认分支，存放 GitHub Actions Workflow 定义和本文档 |
-| `cloud-paste` | **剪贴板跨端共享**：Cloudflare Worker 后端 + Android 客户端，支持文本剪贴板在多设备间同步 |
+| `clipboard-sync` | **剪贴板跨端共享**：Cloudflare Worker 后端 + Android 客户端，支持文本剪贴板在多设备间同步 |
 | `family-tree` | 家谱 / 族谱相关项目 |
 | `game_framework` | 游戏框架 |
 | `linuxdo_daily` | LinuxDo 每日任务自动化 |
@@ -17,23 +17,23 @@
 
 ## GitHub Actions Workflows
 
-Workflow 文件位于 `master` 分支的 `.github/workflows/`，各功能分支上不保留 workflow 文件。Workflow 内部通过 `ref: cloud-paste` 固定拉取代码分支，无论 push 还是手动触发都不会误拉 `master`。
+Workflow 文件位于 `master` 分支的 `.github/workflows/`，各功能分支上不保留 workflow 文件。Workflow 内部通过 `ref: clipboard-sync` 固定拉取代码分支，无论 push 还是手动触发都不会误拉 `master`。
 
 ### Deploy Worker（部署 Cloudflare Worker）
 
 - **文件**：`.github/workflows/deploy-worker.yml`
 - **触发条件**：
-  - 推送到 `cloud-paste` 分支，且 `worker/**` 路径有变更
+  - 推送到 `clipboard-sync` 分支，且 `worker/**` 路径有变更
   - 在 Actions 页面手动触发（`workflow_dispatch`）
-- **作用**：从 `cloud-paste` 拉取代码，将 `worker/` 部署为 Cloudflare Worker
+- **作用**：从 `clipboard-sync` 拉取代码，将 `worker/` 部署为 Cloudflare Worker
 
 ### Build Android（构建 Android APK）
 
 - **文件**：`.github/workflows/build-android.yml`
 - **触发条件**：
-  - 推送到 `cloud-paste` 分支，且 `android/**` 路径有变更
+  - 推送到 `clipboard-sync` 分支，且 `android/**` 路径有变更
   - 在 Actions 页面手动触发（`workflow_dispatch`）
-- **作用**：从 `cloud-paste` 拉取代码，构建 debug APK 并上传到 Actions Artifacts（保留 30 天）
+- **作用**：从 `clipboard-sync` 拉取代码，构建 debug APK 并上传到 Actions Artifacts（保留 30 天）
 
 ### 配置步骤
 
@@ -71,10 +71,10 @@ GitHub 仓库页面 → **Settings** → **Secrets and variables** → **Actions
 
 #### 6. 触发部署
 
-推送代码到 `cloud-paste` 分支（`worker/**` 有变更时自动触发），或在 Actions 页面手动触发。
+推送代码到 `clipboard-sync` 分支（`worker/**` 有变更时自动触发），或在 Actions 页面手动触发。
 
 ### 手动触发
 
 在 GitHub 仓库页面：**Actions** → 选择 Workflow → 右上角 **Run workflow** → 点击运行。
 
-> Workflow 内部硬编码了 `ref: cloud-paste`，所以手动触发时无需额外选择分支。`workflow_dispatch` 按钮只有在默认分支（`master`）上存在 Workflow 文件时才会显示，这也是 Workflow 文件放在 `master` 分支的原因。
+> Workflow 内部硬编码了 `ref: clipboard-sync`，所以手动触发时无需额外选择分支。`workflow_dispatch` 按钮只有在默认分支（`master`）上存在 Workflow 文件时才会显示，这也是 Workflow 文件放在 `master` 分支的原因。

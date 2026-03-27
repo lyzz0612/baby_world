@@ -2,7 +2,7 @@ name: Deploy Worker
 
 on:
   push:
-    branches: [cloud-paste]
+    branches: [clipboard-sync]
     paths: ['worker/**']
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: cloud-paste
+          ref: clipboard-sync
 
       - uses: actions/setup-node@v4
         with:
