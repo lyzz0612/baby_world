@@ -1,34 +1,47 @@
-name: Build Android
+name: Build Android App
 
 on:
   push:
-    branches: [clipboard-sync]
-    paths: ['android/**']
+    branches: [ main, feature/animal-learning ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: android
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: clipboard-sync
 
-      - uses: actions/setup-java@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      - run: chmod +x gradlew
+      - name: Install dependencies
+        run: npm ci
 
-      - run: ./gradlew assembleDebug --no-daemon
+      - name: Build web app
+        run: npm run build
 
-      - uses: actions/upload-artifact@v4
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Android APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
+          name: animal-app-apk
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
