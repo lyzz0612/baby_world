@@ -15,8 +15,22 @@ export default function AnimalsPage() {
   return (
     <div className="animals-container">
       <div className="animals-header">
-        <button className="back-button" onClick={() => navigate('/')}>
-          ← 返回首页
+        <button
+          className="back-button"
+          onClick={() => navigate('/')}
+          aria-label="返回首页"
+          title="返回首页"
+        >
+          <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+            <path
+              d="M15 6 L9 12 L15 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
         <h1 className="page-title">认识动物</h1>
       </div>
@@ -59,60 +73,79 @@ export default function AnimalsPage() {
       <style jsx>{`
         .animals-container {
           min-height: 100vh;
+          min-height: 100dvh;
           background: linear-gradient(135deg, #FFF8F0 0%, #FFECD2 100%);
-          padding: 30px 40px;
+          padding: clamp(16px, 3vw, 30px) clamp(16px, 4vw, 40px);
         }
 
         .animals-header {
           display: flex;
           align-items: center;
-          gap: 30px;
-          margin-bottom: 30px;
+          flex-wrap: wrap;
+          gap: clamp(12px, 2vw, 30px);
+          margin-bottom: clamp(18px, 3vw, 30px);
         }
 
         .back-button {
+          width: clamp(44px, 6vw, 52px);
+          height: clamp(44px, 6vw, 52px);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
           background: white;
           border: none;
-          border-radius: 20px;
-          padding: 12px 25px;
-          font-size: 18px;
-          font-weight: 600;
+          border-radius: 50%;
           color: #666;
           cursor: pointer;
           box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-          transition: all 0.3s ease;
+          transition: all 0.25s ease;
+          padding: 0;
         }
 
         .back-button:hover {
-          transform: translateX(-5px);
+          transform: translateX(-4px);
           box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+          color: #FF6B6B;
+        }
+
+        .back-button:active {
+          transform: translateX(-2px) scale(0.96);
+        }
+
+        .back-button svg {
+          display: block;
+          width: clamp(22px, 3vw, 28px);
+          height: clamp(22px, 3vw, 28px);
         }
 
         .page-title {
-          font-size: 48px;
+          font-size: clamp(24px, 5vw, 48px);
           font-weight: 800;
           color: #FF6B6B;
           margin: 0;
+          line-height: 1.1;
         }
 
         .category-tabs {
-          display: flex;
-          gap: 20px;
-          margin-bottom: 40px;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: clamp(10px, 1.6vw, 20px);
+          margin-bottom: clamp(20px, 3vw, 40px);
         }
 
         .category-tab {
-          flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
-          padding: 20px 30px;
+          gap: clamp(6px, 1vw, 10px);
+          padding: clamp(12px, 2vw, 20px) clamp(12px, 2.5vw, 30px);
           border: none;
-          border-radius: 24px;
+          border-radius: clamp(16px, 2vw, 24px);
           cursor: pointer;
           box-shadow: 0 4px 15px rgba(0,0,0,0.1);
           transition: all 0.3s ease;
+          min-width: 0;
         }
 
         .category-tab:hover {
@@ -125,13 +158,15 @@ export default function AnimalsPage() {
         }
 
         .tab-icon {
-          font-size: 40px;
+          font-size: clamp(24px, 4vw, 40px);
+          line-height: 1;
         }
 
         .tab-label {
-          font-size: 24px;
+          font-size: clamp(14px, 2.4vw, 24px);
           font-weight: 700;
           color: white;
+          white-space: nowrap;
         }
 
         .category-tab:not(.active) .tab-label {
@@ -141,22 +176,41 @@ export default function AnimalsPage() {
         .animals-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 25px;
+          gap: clamp(12px, 2vw, 25px);
         }
 
+        /* 大屏平板 */
         @media (max-width: 1200px) {
           .animals-grid {
             grid-template-columns: repeat(3, 1fr);
           }
         }
 
+        /* 平板/小平板 */
         @media (max-width: 768px) {
+          .animals-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        /* 手机 */
+        @media (max-width: 600px) {
           .animals-grid {
             grid-template-columns: repeat(2, 1fr);
           }
 
-          .category-tabs {
+          .category-tab {
             flex-direction: column;
+            gap: 4px;
+            padding: 10px 6px;
+          }
+        }
+
+        /* 超窄屏 */
+        @media (max-width: 360px) {
+          .animals-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
           }
         }
       `}</style>
