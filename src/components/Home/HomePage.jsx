@@ -33,8 +33,9 @@ export default function HomePage() {
       <style jsx>{`
         .home-container {
           min-height: 100vh;
+          min-height: 100dvh;
           background: linear-gradient(135deg, #FFF8F0 0%, #FFECD2 100%);
-          padding: 40px 20px;
+          padding: clamp(20px, 5vw, 40px) clamp(16px, 4vw, 32px);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -43,13 +44,14 @@ export default function HomePage() {
 
         .home-header {
           text-align: center;
-          margin-bottom: 60px;
+          margin-bottom: clamp(28px, 6vw, 60px);
         }
 
         .logo {
-          font-size: 120px;
-          margin-bottom: 20px;
+          font-size: clamp(72px, 14vw, 120px);
+          margin-bottom: clamp(10px, 2vw, 20px);
           animation: bounce 2s infinite;
+          line-height: 1;
         }
 
         .logo-icon {
@@ -62,15 +64,16 @@ export default function HomePage() {
         }
 
         .app-title {
-          font-size: 64px;
+          font-size: clamp(36px, 7vw, 64px);
           font-weight: 800;
           color: #FF6B6B;
           text-shadow: 3px 3px 0px #FFE66D;
           margin: 0 0 10px;
+          line-height: 1.1;
         }
 
         .app-subtitle {
-          font-size: 28px;
+          font-size: clamp(16px, 3vw, 28px);
           color: #FF9A8B;
           margin: 0;
         }
@@ -78,7 +81,7 @@ export default function HomePage() {
         .features-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 30px;
+          gap: clamp(16px, 3vw, 30px);
           max-width: 900px;
           width: 100%;
         }
@@ -86,8 +89,8 @@ export default function HomePage() {
         .feature-card {
           background: white;
           border: none;
-          border-radius: 30px;
-          padding: 60px 40px;
+          border-radius: clamp(20px, 3vw, 30px);
+          padding: clamp(28px, 6vw, 60px) clamp(20px, 4vw, 40px);
           text-align: center;
           cursor: pointer;
           box-shadow: 0 10px 30px rgba(0,0,0,0.1);
@@ -97,6 +100,10 @@ export default function HomePage() {
         .feature-card:hover {
           transform: translateY(-10px);
           box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+
+        .feature-card:active {
+          transform: translateY(-2px);
         }
 
         .feature-card.active {
@@ -114,16 +121,17 @@ export default function HomePage() {
 
         .feature-icon {
           display: block;
-          font-size: 80px;
-          margin-bottom: 20px;
+          font-size: clamp(48px, 9vw, 80px);
+          margin-bottom: clamp(10px, 2vw, 20px);
+          line-height: 1;
         }
 
         .feature-title {
           display: block;
-          font-size: 32px;
+          font-size: clamp(20px, 4vw, 32px);
           font-weight: 700;
           color: white;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
         }
 
         .feature-card.coming-soon .feature-title,
@@ -133,13 +141,46 @@ export default function HomePage() {
 
         .feature-desc {
           display: block;
-          font-size: 20px;
+          font-size: clamp(13px, 2.4vw, 20px);
           color: rgba(255,255,255,0.9);
         }
 
-        @media (max-width: 768px) {
+        /* 平板竖屏：两列保留，但收紧间距 */
+        @media (max-width: 1024px) and (min-width: 601px) {
+          .features-grid {
+            max-width: 720px;
+          }
+        }
+
+        /* 手机：单列堆叠 */
+        @media (max-width: 600px) {
           .features-grid {
             grid-template-columns: 1fr;
+          }
+        }
+
+        /* 横屏手机：压缩高度，避免溢出 */
+        @media (max-height: 500px) and (orientation: landscape) {
+          .home-container {
+            justify-content: flex-start;
+            padding-top: 16px;
+          }
+          .home-header {
+            margin-bottom: 16px;
+          }
+          .logo {
+            font-size: 56px;
+            margin-bottom: 4px;
+          }
+          .features-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .feature-card {
+            padding: 18px 16px;
+          }
+          .feature-icon {
+            font-size: 40px;
+            margin-bottom: 6px;
           }
         }
       `}</style>

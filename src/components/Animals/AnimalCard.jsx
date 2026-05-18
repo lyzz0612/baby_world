@@ -10,8 +10,8 @@ export default function AnimalCard({ animal, onClick, color }) {
       <style jsx>{`
         .animal-card {
           background: white;
-          border-radius: 24px;
-          padding: 30px;
+          border-radius: clamp(16px, 2vw, 24px);
+          padding: clamp(14px, 2.5vw, 30px) clamp(10px, 2vw, 30px);
           text-align: center;
           cursor: pointer;
           box-shadow: 0 6px 20px rgba(0,0,0,0.1);
@@ -28,16 +28,17 @@ export default function AnimalCard({ animal, onClick, color }) {
         }
 
         .animal-emoji {
-          font-size: 100px;
+          font-size: clamp(48px, 9vw, 100px);
           line-height: 1.2;
-          margin-bottom: 15px;
+          margin-bottom: clamp(8px, 1.5vw, 15px);
           filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
         }
 
         .animal-name {
-          font-size: 28px;
+          font-size: clamp(16px, 2.6vw, 28px);
           font-weight: 700;
           color: #333;
+          line-height: 1.2;
         }
       `}</style>
     </div>
