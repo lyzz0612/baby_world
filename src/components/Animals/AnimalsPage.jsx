@@ -1,16 +1,26 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimalCard from './AnimalCard';
-import AnimalModal from './AnimalModal';
 import { CATEGORIES, getAnimalsByCategory } from '../../data/animals';
+import { audioService } from '../../services/audioService';
 
 export default function AnimalsPage() {
   const navigate = useNavigate();
   const [currentCategory, setCurrentCategory] = useState('farm');
-  const [selectedAnimal, setSelectedAnimal] = useState(null);
+  const playTokenRef = useRef(0);
 
   const animals = getAnimalsByCategory(currentCategory);
   const categoryInfo = CATEGORIES[currentCategory];
+
+  const handleAnimalClick = async (animal) => {
+    const token = ++playTokenRef.current;
+    await audioService.stop();
+    try {
+      await audioService.playAnimalSound(animal);
+    } catch {
+      // 忽略播放错误
+    }
+  };
 
   return (
     <div className="animals-container">
@@ -57,18 +67,10 @@ export default function AnimalsPage() {
             key={animal.id}
             animal={animal}
             color={categoryInfo.color}
-            onClick={() => setSelectedAnimal(animal)}
+            onClick={() => handleAnimalClick(animal)}
           />
         ))}
       </div>
-
-      {selectedAnimal && (
-        <AnimalModal
-          animal={selectedAnimal}
-          color={categoryInfo.color}
-          onClose={() => setSelectedAnimal(null)}
-        />
-      )}
 
       <style jsx>{`
         .animals-container {
