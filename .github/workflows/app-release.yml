@@ -1,0 +1,118 @@
+name: Release Animal App to R2
+
+on:
+  push:
+    branches: [feature/animal-learning]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Full versionName (e.g. 1.0.0)'
+        required: true
+      release_notes:
+        description: 'Release notes (# separates lines)'
+        required: false
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.APP_RELEASE_CONFIG != '' }}
+    env:
+      APP_RELEASE_CONFIG: ${{ secrets.APP_RELEASE_CONFIG }}
+      INPUT_VERSION_NAME: ${{ github.event.inputs.version_name }}
+      INPUT_RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute version
+        run: bash .github/scripts/release-version.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Sync web assets to Capacitor
+        run: npx cap sync android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: 8.14.3
+          cache-disabled: true
+
+      - name: Prepare release keystore
+        if: ${{ secrets.ANDROID_RELEASE_KEYSTORE != '' }}
+        env:
+          ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          keystore_path="${RUNNER_TEMP}/release.keystore"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 -d > "$keystore_path"
+          echo "ANDROID_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon \
+            -PVERSION_CODE="${VERSION_CODE}" \
+            -PVERSION_NAME="${VERSION_NAME}" \
+            -PUPDATE_CHECK_URL="${UPDATE_CHECK_URL}"
+
+      - name: Generate latest.json
+        run: |
+          jq -n \
+            --argjson versionCode "${VERSION_CODE}" \
+            --arg versionName "${VERSION_NAME}" \
+            --arg content "${RELEASE_NOTES}" \
+            --argjson minSupport "${MIN_SUPPORT}" \
+            --arg url "${APK_PUBLIC_URL}" \
+            '{versionCode: $versionCode, versionName: $versionName, content: $content, minSupport: $minSupport, url: $url}' \
+            > "${RUNNER_TEMP}/latest.json"
+          jq '{versionName, versionCode, url, minSupport}' "${RUNNER_TEMP}/latest.json"
+
+      - name: Upload to Cloudflare R2
+        env:
+          APP_RELEASE_CONFIG: ${{ secrets.APP_RELEASE_CONFIG }}
+        run: |
+          config_file="${RUNNER_TEMP}/app-release-config.json"
+          printf '%s' "$APP_RELEASE_CONFIG" > "$config_file"
+          export AWS_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY
+          AWS_ACCESS_KEY_ID=$(jq -r '.r2.accessKeyId' "$config_file")
+          AWS_SECRET_ACCESS_KEY=$(jq -r '.r2.secretAccessKey' "$config_file")
+          export AWS_DEFAULT_REGION="auto"
+          apk_path="android/app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "$apk_path" ]]; then
+            apk_path=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          fi
+          aws s3 cp "$apk_path" "s3://${R2_BUCKET}/${PATH_APK}" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --content-type "application/vnd.android.package-archive"
+          aws s3 cp "${RUNNER_TEMP}/latest.json" "s3://${R2_BUCKET}/${PATH_JSON}" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --content-type "application/json"

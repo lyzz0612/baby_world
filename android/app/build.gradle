@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+def ciVersionCode = project.findProperty('VERSION_CODE')?.toString()?.toInteger()
+def ciVersionName = project.findProperty('VERSION_NAME')?.toString()
+def updateCheckUrl = project.findProperty('UPDATE_CHECK_URL')?.toString()
+        ?: 'https://download.example.com/update/latest.json'
+
 android {
     namespace = "com.animal.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +12,9 @@ android {
         applicationId "com.animal.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode ciVersionCode ?: 1
+        versionName ciVersionName ?: "1.0"
+        resValue "string", "update_check_url", updateCheckUrl
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +22,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+    if (releaseKeystorePath != null && file(releaseKeystorePath).exists()) {
+        signingConfigs {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword System.getenv('KEYSTORE_PASSWORD') ?: ''
+                keyAlias System.getenv('KEY_ALIAS') ?: ''
+                keyPassword System.getenv('KEY_PASSWORD') ?: ''
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseKeystorePath != null && file(releaseKeystorePath).exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
@@ -42,6 +63,7 @@ configurations.all {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'com.github.fccaikai:AppUpdate:2.1.4'
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"

@@ -1,0 +1,18 @@
+{
+  "r2": {
+    "endpoint": "https://<account_id>.r2.cloudflarestorage.com",
+    "bucket": "your-bucket",
+    "accessKeyId": "REPLACE_ME",
+    "secretAccessKey": "REPLACE_ME"
+  },
+  "cdn": {
+    "baseUrl": "https://download.example.com"
+  },
+  "paths": {
+    "latestJson": "update/latest.json",
+    "apk": "update/app-release.apk"
+  },
+  "appUpdate": {
+    "minSupport": 1
+  }
+}
