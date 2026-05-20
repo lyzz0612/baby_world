@@ -1,19 +1,75 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import type { Animal } from '@/src/data/animals';
+import { colors } from '@/src/theme/colors';
 
 type Props = {
   animal: Animal;
+  isPlaying?: boolean;
   onPress: () => void;
 };
 
-export function AnimalCard({ animal, onPress }: Props) {
+/**
+ * 1A 交互：点击卡片直接播叫声；
+ * 播放中卡片高亮 + emoji 持续轻微抖动，与 fd0b6f72 Modal 内的 shake 动画语义一致。
+ */
+export function AnimalCard({ animal, isPlaying = false, onPress }: Props) {
+  const shake = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isPlaying) {
+      shake.stopAnimation();
+      shake.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shake, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shake, {
+          toValue: -1,
+          duration: 250,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isPlaying, shake]);
+
+  const rotate = shake.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-5deg', '5deg'],
+  });
+  const scale = shake.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: [1.05, 1, 1.05],
+  });
+
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.card,
+        isPlaying && styles.cardActive,
+        pressed && styles.cardPressed,
+      ]}
       onPress={onPress}
+      accessibilityLabel={animal.name}
+      accessibilityRole="button"
     >
-      <Text style={styles.emoji}>{animal.emoji}</Text>
-      <Text style={styles.name}>{animal.name}</Text>
+      <Animated.Text
+        style={[styles.emoji, { transform: [{ rotate }, { scale }] }]}
+      >
+        {animal.emoji}
+      </Animated.Text>
+      <Text style={[styles.name, isPlaying && styles.nameActive]}>
+        {animal.name}
+      </Text>
     </Pressable>
   );
 }
@@ -34,6 +90,12 @@ const styles = StyleSheet.create({
     margin: 6,
     minHeight: 120,
   },
+  cardActive: {
+    backgroundColor: colors.primaryLight,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 8,
+  },
   cardPressed: {
     transform: [{ scale: 0.98 }],
   },
@@ -46,5 +108,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
+  },
+  nameActive: {
+    color: '#fff',
   },
 });

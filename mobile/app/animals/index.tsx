@@ -1,7 +1,10 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -10,9 +13,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnimalCard } from '@/components/AnimalCard';
-import { AnimalModal } from '@/components/AnimalModal';
 import { ScreenBackground } from '@/components/ScreenBackground';
 import { ANIMALS, type Animal } from '@/src/data/animals';
+import { audioService } from '@/src/services/audioService';
 import { recordAnimalClick, sortAnimalsByClicks } from '@/src/services/clickStats';
 import { colors } from '@/src/theme/colors';
 import { chunk, ITEMS_PER_PAGE } from '@/src/utils/pagination';
@@ -24,8 +27,12 @@ export default function AnimalsScreen() {
 
   const [sortedAnimals, setSortedAnimals] = useState<Animal[]>(ANIMALS);
   const [pageIndex, setPageIndex] = useState(0);
-  const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  const playTokenRef = useRef(0);
+  const trackTranslate = useRef(new Animated.Value(0)).current;
 
   const refreshSort = useCallback(async () => {
     const sorted = await sortAnimalsByClicks(ANIMALS);
@@ -38,34 +45,72 @@ export default function AnimalsScreen() {
     refreshSort().finally(() => setReady(true));
   }, [refreshSort]);
 
+  // 重新进入页面时按最新点击数据排序；播放过程中不动布局，避免视觉跳动
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSort();
+    }, [refreshSort])
+  );
+
   const pages = useMemo(
     () => chunk(sortedAnimals, ITEMS_PER_PAGE),
     [sortedAnimals]
   );
   const totalPages = pages.length;
   const safePageIndex = Math.min(pageIndex, Math.max(0, totalPages - 1));
-  const pageAnimals = pages[safePageIndex] ?? [];
+
+  // 翻页：track translateX 动画，等价 web 端 transform: translateX(-N*100%)
+  useEffect(() => {
+    Animated.timing(trackTranslate, {
+      toValue: -safePageIndex * viewportWidth,
+      duration: viewportWidth > 0 ? 320 : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [safePageIndex, viewportWidth, trackTranslate]);
 
   const goPrev = () => setPageIndex((i) => Math.max(0, i - 1));
   const goNext = () => setPageIndex((i) => Math.min(totalPages - 1, i + 1));
 
-  /** 先开弹窗，再后台落盘，保证点击即时响应 */
-  const handleAnimalPress = (animal: Animal) => {
-    setSelectedAnimal(animal);
-    recordAnimalClick(animal.id);
-  };
+  const handleAnimalPress = useCallback(
+    async (animal: Animal) => {
+      const token = ++playTokenRef.current;
+      recordAnimalClick(animal.id);
+      await audioService.stop();
+      if (playTokenRef.current !== token) return;
+      setPlayingId(animal.id);
+      try {
+        await audioService.playAnimalSound(animal);
+      } finally {
+        if (playTokenRef.current === token) {
+          setPlayingId(null);
+        }
+      }
+    },
+    []
+  );
 
-  const handleModalClose = async () => {
-    setSelectedAnimal(null);
-    await refreshSort();
-  };
+  // 离开页面时停掉播放
+  useEffect(() => {
+    return () => {
+      playTokenRef.current++;
+      void audioService.stop();
+    };
+  }, []);
 
   const goHome = () => {
+    playTokenRef.current++;
+    void audioService.stop();
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/');
     }
+  };
+
+  const onViewportLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w !== viewportWidth) setViewportWidth(w);
   };
 
   if (!ready) {
@@ -106,15 +151,43 @@ export default function AnimalsScreen() {
             <FontAwesome name="chevron-left" size={28} color={colors.primary} />
           </Pressable>
 
-          <View style={styles.grid}>
-            {pageAnimals.map((animal) => (
-              <View
-                key={animal.id}
-                style={[styles.gridItem, { width: `${100 / numColumns}%` }]}
+          <View style={styles.viewport} onLayout={onViewportLayout}>
+            {viewportWidth > 0 ? (
+              <Animated.View
+                style={[
+                  styles.track,
+                  {
+                    width: viewportWidth * pages.length,
+                    transform: [{ translateX: trackTranslate }],
+                  },
+                ]}
               >
-                <AnimalCard animal={animal} onPress={() => handleAnimalPress(animal)} />
-              </View>
-            ))}
+                {pages.map((pageAnimals, idx) => (
+                  <View
+                    key={idx}
+                    style={[styles.page, { width: viewportWidth }]}
+                  >
+                    <View style={styles.grid}>
+                      {pageAnimals.map((animal) => (
+                        <View
+                          key={animal.id}
+                          style={[
+                            styles.gridItem,
+                            { width: `${100 / numColumns}%` },
+                          ]}
+                        >
+                          <AnimalCard
+                            animal={animal}
+                            isPlaying={playingId === animal.id}
+                            onPress={() => void handleAnimalPress(animal)}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </Animated.View>
+            ) : null}
           </View>
 
           <Pressable
@@ -147,10 +220,6 @@ export default function AnimalsScreen() {
         <Text style={styles.hint}>
           第 {safePageIndex + 1} / {totalPages} 页 · 点两边大按钮翻页
         </Text>
-
-        {selectedAnimal ? (
-          <AnimalModal animal={selectedAnimal} onClose={handleModalClose} />
-        ) : null}
       </SafeAreaView>
     </ScreenBackground>
   );
@@ -214,6 +283,17 @@ const styles = StyleSheet.create({
   },
   pageNavPressed: {
     opacity: 0.7,
+  },
+  viewport: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  track: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  page: {
+    flex: 0,
   },
   grid: {
     flex: 1,
