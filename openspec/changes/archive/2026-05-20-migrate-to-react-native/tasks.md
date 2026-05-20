@@ -55,6 +55,6 @@
 
 ## 9. 清理旧栈
 
-- [ ] 9.1 迁移验收通过后移除根目录 Capacitor 依赖与脚本
-- [ ] 9.2 删除或归档旧 `android/`（Capacitor）与 Vite 客户端 `src/`（按团队决定保留 Web 与否）
+- [x] 9.1 迁移验收通过后移除根目录 Capacitor 依赖与脚本（commit 9caf33e5：删 root `package.json` / `package-lock.json` / `vite.config.js` / `eslint.config.js` / `index.html` / `capacitor.config.json` / `scripts/generate_tts.py`）
+- [x] 9.2 删除或归档旧 `android/`（Capacitor）与 Vite 客户端 `src/`（commit 9caf33e5：直接删除两目录及 `public/sounds/`，sounds 已迁至 `mobile/assets/sounds/`）
 - [x] 9.3 更新根 `README.md`：以 `mobile/` 为主的开发与构建说明
