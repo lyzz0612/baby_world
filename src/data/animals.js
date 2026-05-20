@@ -66,6 +66,5 @@ export const ANIMALS = [
   { id: 'ocean-14', name: '虎鲸',   category: 'ocean', emoji: '🐳', sound: '/sounds/ocean-14.mp3' }
 ];
 
-export const getAnimalsByCategory = (category) => {
-  return ANIMALS.filter(animal => animal.category === category);
-};
+export const getAnimalColor = (animal) =>
+  CATEGORIES[animal.category]?.color ?? '#FFB84D';
