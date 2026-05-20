@@ -1,3 +1,29 @@
+# 动物乐园
+
+> **新主客户端：[`mobile/`（React Native + Expo）](mobile/README.md)。** 因荣耀等未成年人模式会拦截 WebView 类应用，已迁移到 RN 原生壳；日常开发请以 `mobile/` 为准。下文 Capacitor 工程文档保留作为已上线旧 APK 的运维参考，RN 真机验收通过后将清理（见 `openspec/changes/migrate-to-react-native/tasks.md` 第 9 节）。
+
+## 快速开始（RN）
+
+```bash
+cd mobile
+npm install
+npm start
+```
+
+- **Android 真机/模拟器**：`npm run android`
+- **Web 开发预览**（非生产验收）：`npm run web`
+
+## 资源（RN）
+
+- 动物数据：`mobile/src/data/animals.ts`（由旧 `src/data/animals.js` 同步而来）
+- 音频：`mobile/assets/sounds/`（由 `public/sounds/` 复制；更新后运行 `npm run generate:sounds`）
+
+---
+
+## 遗留 Web / Capacitor
+
+> 以下为旧 Capacitor 工程的功能/发布文档，仅供已上线旧 APK 的版本运维使用。新功能请走 `mobile/`。
+
 # AnimalApp（动物乐园）
 
 面向儿童的动物认知 Android 应用：React + Vite 构建 Web 界面，通过 Capacitor 打包为原生 APK。支持动物叫声播放、分类浏览，以及基于远程清单的 **应用内自动更新**。
@@ -177,8 +203,9 @@ CI 自动生成，AppUpdate 依赖该结构：
 ## 项目结构
 
 ```
-├── src/                    # React 前端
-├── android/                # Capacitor Android 工程
+├── mobile/                 # React Native (Expo) 主客户端 ← 新增
+├── src/                    # React 前端（旧 Capacitor）
+├── android/                # Capacitor Android 工程（旧）
 ├── .github/workflows/      # CI：debug 构建 + R2 release
 ├── .github/scripts/        # 版本计算脚本 release-version.sh
 └── docs/RELEASE.md         # 发布与验证详细文档
@@ -186,8 +213,9 @@ CI 自动生成，AppUpdate 依赖该结构：
 
 ## 技术栈
 
-- **前端**：React 19、Vite 8、React Router、Tailwind CSS 4
-- **原生**：Capacitor 8、Android SDK 35
+- **新客户端**：React Native、Expo SDK 54、expo-router、expo-audio、expo-speech
+- **旧前端**：React 19、Vite 8、React Router、Tailwind CSS 4
+- **旧原生**：Capacitor 8、Android SDK 35
 - **更新**：JitPack `com.github.fccaikai:AppUpdate`
 - **托管**：Cloudflare R2（S3 API）+ 自定义域名 CDN
 
@@ -195,3 +223,4 @@ CI 自动生成，AppUpdate 依赖该结构：
 
 - [docs/RELEASE.md](docs/RELEASE.md) — 验证清单、本地模拟更新、故障排查
 - [docs/app-release-config.example.json](docs/app-release-config.example.json) — `APP_RELEASE_CONFIG` 模板
+- [mobile/README.md](mobile/README.md) — RN 主客户端开发与构建指南
