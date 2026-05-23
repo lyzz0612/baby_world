@@ -3,6 +3,10 @@ name: Release Baby World App to R2
 on:
   push:
     branches: [master]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-release.yml'
+      - '.github/scripts/release-version.sh'
     tags: ['v*']
   workflow_dispatch:
     inputs:
