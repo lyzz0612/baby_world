@@ -52,7 +52,12 @@ export function FamilyCard({
     >
       <View style={styles.mediaArea}>
         {imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />
+          <Image
+            key={imageUri}
+            source={{ uri: imageUri }}
+            style={styles.photo}
+            resizeMode="cover"
+          />
         ) : (
           <View style={styles.emojiWrap}>
             <Text style={[styles.emoji, { fontSize: EMOJI_SIZE[size] }]}>{title.emoji}</Text>

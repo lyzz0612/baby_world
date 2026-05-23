@@ -35,7 +35,12 @@ export function FamilyImageModal({ visible, title, imageUri, onClose, onReplay }
             accessibilityLabel={`重播${title.name}的语音`}
           >
             {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />
+              <Image
+                key={imageUri}
+                source={{ uri: imageUri }}
+                style={styles.photo}
+                resizeMode="cover"
+              />
             ) : (
               <Text style={[styles.emoji, { fontSize: modalSize * 0.4 }]}>{title.emoji}</Text>
             )}

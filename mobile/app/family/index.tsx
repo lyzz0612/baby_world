@@ -91,6 +91,9 @@ export default function FamilyScreen() {
 
       const savedUri = await saveFamilyImage(title.id, result.assets[0].uri);
       setImageMap((prev) => ({ ...prev, [title.id]: savedUri }));
+      if (modalTitle?.id === title.id) {
+        setModalTitle({ ...title });
+      }
     } catch {
       Alert.alert('更换失败', '无法读取本地照片，请换一张试试。');
     }

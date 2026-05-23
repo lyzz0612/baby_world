@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const STORAGE_KEY = 'family-custom-images';
 
@@ -14,6 +15,20 @@ function familyImagesDir(): Directory {
     dir.create();
   }
   return dir;
+}
+
+function stripQuery(uri: string): string {
+  return uri.split('?')[0];
+}
+
+function withCacheBuster(fileUri: string): string {
+  try {
+    const file = new File(fileUri);
+    const stamp = file.modificationTime ?? Date.now();
+    return `${fileUri}?v=${stamp}`;
+  } catch {
+    return `${fileUri}?v=${Date.now()}`;
+  }
 }
 
 async function loadMap(): Promise<ImageMap> {
@@ -37,33 +52,93 @@ async function persistMap(map: ImageMap): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 }
 
+function deleteImageFile(uri?: string | null): void {
+  if (!uri) return;
+  try {
+    const file = new File(stripQuery(uri));
+    if (file.exists) file.delete();
+  } catch {
+    /* noop */
+  }
+}
+
+function deleteImagesForId(id: string, keepUri?: string): void {
+  const dir = familyImagesDir();
+  const keepPath = keepUri ? stripQuery(keepUri) : null;
+  try {
+    for (const entry of dir.list()) {
+      if (!(entry instanceof File)) continue;
+      if (!entry.name.startsWith(`${id}.`) && entry.name !== `${id}.jpg`) continue;
+      if (keepPath && entry.uri === keepPath) continue;
+      if (entry.exists) entry.delete();
+    }
+  } catch {
+    /* noop */
+  }
+}
+
+async function copyPickerImage(fromUri: string, toUri: string): Promise<void> {
+  const dest = new File(toUri);
+  if (dest.exists) {
+    dest.delete();
+  }
+
+  try {
+    const src = new File(fromUri);
+    src.copy(dest);
+    if (dest.exists && dest.size > 0) return;
+  } catch {
+    /* fallback below */
+  }
+
+  await FileSystem.copyAsync({ from: fromUri, to: toUri });
+}
+
 export async function getFamilyImageMap(): Promise<ImageMap> {
-  return { ...(await loadMap()) };
+  const map = await loadMap();
+  const result: ImageMap = {};
+
+  for (const [id, storedUri] of Object.entries(map)) {
+    const fileUri = stripQuery(storedUri);
+    const file = new File(fileUri);
+    if (file.exists) {
+      result[id] = withCacheBuster(fileUri);
+    }
+  }
+
+  return result;
 }
 
 export async function getFamilyImageUri(id: string): Promise<string | null> {
-  const map = await loadMap();
-  const uri = map[id];
-  if (!uri) return null;
-  try {
-    const file = new File(uri);
-    return file.exists ? uri : null;
-  } catch {
-    return null;
-  }
+  const map = await getFamilyImageMap();
+  return map[id] ?? null;
 }
 
 /** 从本地相册 URI 复制到应用目录并记录映射 */
 export async function saveFamilyImage(id: string, pickedUri: string): Promise<string> {
   const dir = familyImagesDir();
-  const dest = new File(dir, `${id}.jpg`);
-  if (dest.exists) {
-    dest.delete();
-  }
-  const src = new File(pickedUri);
-  src.copy(dest);
   const map = await loadMap();
+  const previousUri = map[id];
+
+  const stamp = Date.now();
+  const dest = new File(dir, `${id}.${stamp}.jpg`);
+
+  await copyPickerImage(pickedUri, dest.uri);
+
+  if (!dest.exists || dest.size <= 0) {
+    throw new Error('copy failed');
+  }
+
   map[id] = dest.uri;
   await persistMap(map);
-  return dest.uri;
+
+  deleteImageFile(previousUri);
+  deleteImagesForId(id, dest.uri);
+
+  return withCacheBuster(dest.uri);
+}
+
+export function invalidateFamilyImageCache(): void {
+  cache = null;
+  loadPromise = null;
 }
