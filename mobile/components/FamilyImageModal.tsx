@@ -1,19 +1,22 @@
 import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import type { FamilyTitle } from '@/src/data/familyTitles';
+import type { FamilyRelation } from '@/src/data/familyRelations';
 
 type Props = {
   visible: boolean;
-  title: FamilyTitle | null;
+  relation: FamilyRelation | null;
   imageUri?: string | null;
   onClose: () => void;
   onReplay: () => void;
 };
 
-export function FamilyImageModal({ visible, title, imageUri, onClose, onReplay }: Props) {
+export function FamilyImageModal({ visible, relation, imageUri, onClose, onReplay }: Props) {
   const { width, height } = useWindowDimensions();
-  const modalSize = Math.min(width * 0.82, height * 0.52, 420);
+  const modalWidth = Math.min(width * 0.88, 560, width - 48);
+  const modalHeight = Math.min(modalWidth * 0.72, height * 0.42, 320);
 
-  if (!title) return null;
+  if (!relation) return null;
+
+  const showPhoto = relation.imageSource === 'photo' && imageUri;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -23,26 +26,26 @@ export function FamilyImageModal({ visible, title, imageUri, onClose, onReplay }
             style={[
               styles.imageFrame,
               {
-                width: modalSize,
-                height: modalSize,
-                borderRadius: modalSize * 0.08,
+                width: modalWidth,
+                height: modalHeight,
+                borderRadius: modalWidth * 0.05,
               },
             ]}
             onPress={(e) => {
               e.stopPropagation();
               onReplay();
             }}
-            accessibilityLabel={`重播${title.name}的语音`}
+            accessibilityLabel={`重播${relation.name}的语音`}
           >
-            {imageUri ? (
+            {showPhoto ? (
               <Image
                 key={imageUri}
                 source={{ uri: imageUri }}
                 style={styles.photo}
-                resizeMode="cover"
+                resizeMode="contain"
               />
             ) : (
-              <Text style={[styles.emoji, { fontSize: modalSize * 0.4 }]}>{title.emoji}</Text>
+              <Text style={[styles.emoji, { fontSize: modalHeight * 0.34 }]}>{relation.emoji}</Text>
             )}
             <View style={styles.replayHint}>
               <Text style={styles.replayHintText}>点击重播</Text>
@@ -50,7 +53,7 @@ export function FamilyImageModal({ visible, title, imageUri, onClose, onReplay }
           </Pressable>
 
           <Text style={styles.name} pointerEvents="none">
-            {title.name}
+            {relation.name}
           </Text>
           <Text style={styles.hint} pointerEvents="none">
             点击图片重播 · 点空白处关闭
@@ -87,6 +90,7 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     height: '100%',
+    backgroundColor: '#111',
   },
   emoji: {
     textAlign: 'center',

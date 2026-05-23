@@ -50,6 +50,7 @@ const config: ExpoConfig = {
       'android.permission.INTERNET',
       'android.permission.REQUEST_INSTALL_PACKAGES',
       'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.RECORD_AUDIO',
     ],
   },
   web: {
@@ -63,7 +64,7 @@ const config: ExpoConfig = {
     [
       'expo-image-picker',
       {
-        photosPermission: '允许访问相册，以便为称呼更换本地照片',
+        photosPermission: '允许访问相册，以便为关系谱更换本地照片',
       },
     ],
   ],

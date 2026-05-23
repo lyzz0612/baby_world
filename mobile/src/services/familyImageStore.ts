@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const STORAGE_KEY = 'family-custom-images';
+const STORAGE_KEY = 'family-custom-images-v2';
+
+export type FamilyImageVariant = 'list' | 'detail';
 
 type ImageMap = Record<string, string>;
 
@@ -15,6 +17,14 @@ function familyImagesDir(): Directory {
     dir.create();
   }
   return dir;
+}
+
+function storageKey(id: string, variant: FamilyImageVariant): string {
+  return variant === 'list' ? id : `${id}__detail`;
+}
+
+function filePrefix(id: string, variant: FamilyImageVariant): string {
+  return variant === 'list' ? `${id}.` : `${id}__detail.`;
 }
 
 function stripQuery(uri: string): string {
@@ -62,13 +72,14 @@ function deleteImageFile(uri?: string | null): void {
   }
 }
 
-function deleteImagesForId(id: string, keepUri?: string): void {
+function deleteImagesForKey(key: string, keepUri?: string): void {
   const dir = familyImagesDir();
   const keepPath = keepUri ? stripQuery(keepUri) : null;
+  const prefix = key.includes('__detail') ? `${key.split('__detail')[0]}__detail.` : `${key}.`;
   try {
     for (const entry of dir.list()) {
       if (!(entry instanceof File)) continue;
-      if (!entry.name.startsWith(`${id}.`) && entry.name !== `${id}.jpg`) continue;
+      if (!entry.name.startsWith(prefix)) continue;
       if (keepPath && entry.uri === keepPath) continue;
       if (entry.exists) entry.delete();
     }
@@ -94,34 +105,43 @@ async function copyPickerImage(fromUri: string, toUri: string): Promise<void> {
   await FileSystem.copyAsync({ from: fromUri, to: toUri });
 }
 
-export async function getFamilyImageMap(): Promise<ImageMap> {
+export async function getFamilyImageMap(): Promise<Record<string, string>> {
   const map = await loadMap();
-  const result: ImageMap = {};
+  const result: Record<string, string> = {};
 
-  for (const [id, storedUri] of Object.entries(map)) {
+  for (const [key, storedUri] of Object.entries(map)) {
     const fileUri = stripQuery(storedUri);
     const file = new File(fileUri);
     if (file.exists) {
-      result[id] = withCacheBuster(fileUri);
+      result[key] = withCacheBuster(fileUri);
     }
   }
 
   return result;
 }
 
-export async function getFamilyImageUri(id: string): Promise<string | null> {
+export async function getFamilyListImageUri(id: string): Promise<string | null> {
   const map = await getFamilyImageMap();
-  return map[id] ?? null;
+  return map[storageKey(id, 'list')] ?? null;
+}
+
+export async function getFamilyDetailImageUri(id: string): Promise<string | null> {
+  const map = await getFamilyImageMap();
+  return map[storageKey(id, 'detail')] ?? map[storageKey(id, 'list')] ?? null;
 }
 
 /** 从本地相册 URI 复制到应用目录并记录映射 */
-export async function saveFamilyImage(id: string, pickedUri: string): Promise<string> {
+export async function saveFamilyImage(
+  id: string,
+  pickedUri: string,
+  variant: FamilyImageVariant = 'list'
+): Promise<string> {
   const dir = familyImagesDir();
   const map = await loadMap();
-  const previousUri = map[id];
-
+  const key = storageKey(id, variant);
+  const previousUri = map[key];
   const stamp = Date.now();
-  const dest = new File(dir, `${id}.${stamp}.jpg`);
+  const dest = new File(dir, `${filePrefix(id, variant)}${stamp}.jpg`);
 
   await copyPickerImage(pickedUri, dest.uri);
 
@@ -129,13 +149,44 @@ export async function saveFamilyImage(id: string, pickedUri: string): Promise<st
     throw new Error('copy failed');
   }
 
-  map[id] = dest.uri;
+  map[key] = dest.uri;
   await persistMap(map);
 
   deleteImageFile(previousUri);
-  deleteImagesForId(id, dest.uri);
+  deleteImagesForKey(key, dest.uri);
 
   return withCacheBuster(dest.uri);
+}
+
+export async function deleteFamilyListImage(id: string): Promise<void> {
+  const key = storageKey(id, 'list');
+  const map = await loadMap();
+  deleteImageFile(map[key]);
+  delete map[key];
+  await persistMap(map);
+  deleteImagesForKey(key);
+}
+
+export async function deleteFamilyDetailImage(id: string): Promise<void> {
+  const key = storageKey(id, 'detail');
+  const map = await loadMap();
+  deleteImageFile(map[key]);
+  delete map[key];
+  await persistMap(map);
+  deleteImagesForKey(key);
+}
+
+export async function deleteFamilyImagesForId(id: string): Promise<void> {
+  const listKey = storageKey(id, 'list');
+  const detailKey = storageKey(id, 'detail');
+  const map = await loadMap();
+  deleteImageFile(map[listKey]);
+  deleteImageFile(map[detailKey]);
+  delete map[listKey];
+  delete map[detailKey];
+  await persistMap(map);
+  deleteImagesForKey(listKey);
+  deleteImagesForKey(detailKey);
 }
 
 export function invalidateFamilyImageCache(): void {

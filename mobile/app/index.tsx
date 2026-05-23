@@ -37,7 +37,7 @@ const APP_MODULES: AppModule[] = [
   },
   {
     id: 'family',
-    title: '称呼叫声',
+    title: '宝宝关系谱',
     icon: '👨‍👩‍👧',
     color: '#FFD6A5',
     route: '/family',

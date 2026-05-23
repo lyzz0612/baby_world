@@ -1,13 +1,13 @@
 import * as Speech from 'expo-speech';
 import {
-  FAMILY_TITLES,
+  DEFAULT_VOICE_PROFILE,
   type FamilyAgeGroup,
   type FamilyGender,
-  type FamilyTitle,
-} from '@/src/data/familyTitles';
+  type FamilyRelation,
+  type FamilyVoiceProfile,
+} from '@/src/data/familyRelations';
 
 let zhVoices: Speech.Voice[] | null = null;
-let titleVoiceMap: Map<string, string> | null = null;
 let maleVoiceAvailable: boolean | null = null;
 
 const FEMALE_HINTS =
@@ -15,12 +15,15 @@ const FEMALE_HINTS =
 const MALE_HINTS =
   /male|man|boy|gent|dad|uncle|男|yunxi|yunyang|kangkang|qige|limu|yunjian|xiaogang|xiaokun|tom|alex|daniel|david|james|aaron|fred|junior|grandpa|grandfather/i;
 
-export const FAMILY_CALL_PAUSE_MS = 850;
-
 export type FamilySpeechProfile = {
   voice?: string;
-  intro: Speech.SpeechOptions;
-  name: Speech.SpeechOptions;
+  options: Speech.SpeechOptions;
+};
+
+export type ZhVoiceOption = {
+  id: string;
+  label: string;
+  voice: Speech.Voice;
 };
 
 function voiceKey(voice: Speech.Voice): string {
@@ -90,90 +93,103 @@ function buildGenderPools(voices: Speech.Voice[]): {
   };
 }
 
-async function buildTitleVoiceMap(): Promise<Map<string, string>> {
-  if (titleVoiceMap) return titleVoiceMap;
-
-  const voices = sortVoices(await getZhVoices());
-  const { malePool, femalePool, hasMaleVoice } = buildGenderPools(voices);
-  maleVoiceAvailable = hasMaleVoice;
-
-  const map = new Map<string, string>();
-  const slots: Array<{ gender: FamilyGender; age: FamilyAgeGroup }> = [
-    { gender: 'male', age: 'elder' },
-    { gender: 'male', age: 'adult' },
-    { gender: 'male', age: 'child' },
-    { gender: 'female', age: 'elder' },
-    { gender: 'female', age: 'adult' },
-    { gender: 'female', age: 'child' },
-  ];
-
-  for (const slot of slots) {
-    const pool = slot.gender === 'male' ? malePool : femalePool;
-    const titlesInSlot = FAMILY_TITLES.filter(
-      (t) => t.voice.gender === slot.gender && t.voice.age === slot.age
-    );
-
-    titlesInSlot.forEach((title, idx) => {
-      const voice = pool[idx % Math.max(pool.length, 1)];
-      if (voice) {
-        map.set(title.id, voiceKey(voice));
-      }
-    });
-  }
-
-  titleVoiceMap = map;
-  return map;
-}
-
 function adjustPitchForVoiceAvailability(
-  title: FamilyTitle,
+  profile: FamilyVoiceProfile,
   pitch: number,
   hasMaleVoice: boolean
 ): number {
-  if (title.voice.gender === 'male' && !hasMaleVoice) {
+  if (profile.gender === 'male' && !hasMaleVoice) {
     return Math.min(pitch, 0.58);
   }
-  if (title.voice.gender === 'female' && hasMaleVoice) {
+  if (profile.gender === 'female' && hasMaleVoice) {
     return Math.max(pitch, 1.05);
   }
   return pitch;
 }
 
-export async function resolveFamilySpeechProfile(title: FamilyTitle): Promise<FamilySpeechProfile> {
-  const map = await buildTitleVoiceMap();
-  const voice = map.get(title.id);
-  const hasMaleVoice = maleVoiceAvailable ?? false;
+function resolveVoiceForProfile(
+  profile: FamilyVoiceProfile,
+  voices: Speech.Voice[],
+  preferredVoiceId?: string
+): string | undefined {
+  if (preferredVoiceId) {
+    const matched = voices.find((voice) => voiceKey(voice) === preferredVoiceId);
+    if (matched) return voiceKey(matched);
+  }
 
-  const introPitch = adjustPitchForVoiceAvailability(title, title.voice.pitch, hasMaleVoice);
-  const intro: Speech.SpeechOptions = {
-    language: 'zh-CN',
-    pitch: introPitch,
-    rate: title.voice.rate,
-  };
+  const { malePool, femalePool } = buildGenderPools(voices);
+  const pool = profile.gender === 'male' ? malePool : femalePool;
+  const ageIndex = profile.age === 'elder' ? 0 : profile.age === 'adult' ? 1 : 2;
+  const voice = pool[ageIndex % Math.max(pool.length, 1)] ?? pool[0] ?? voices[0];
+  return voice ? voiceKey(voice) : undefined;
+}
 
-  const name: Speech.SpeechOptions = {
-    ...intro,
-    rate: Math.min(0.76, title.voice.rate * 0.82),
-  };
+export async function listZhVoiceOptions(): Promise<ZhVoiceOption[]> {
+  const voices = sortVoices(await getZhVoices());
+  return voices.map((voice) => ({
+    id: voiceKey(voice),
+    label: voice.name || voiceKey(voice),
+    voice,
+  }));
+}
+
+export async function resolveRelationSpeechProfile(
+  relation: FamilyRelation
+): Promise<FamilySpeechProfile> {
+  const voices = sortVoices(await getZhVoices());
+  const { hasMaleVoice } = buildGenderPools(voices);
+  maleVoiceAvailable = hasMaleVoice;
+
+  const profile = relation.voiceProfile ?? DEFAULT_VOICE_PROFILE;
+  const voice = resolveVoiceForProfile(profile, voices, relation.ttsVoiceId);
+  const pitch = adjustPitchForVoiceAvailability(profile, profile.pitch, hasMaleVoice);
 
   return {
     voice,
-    intro,
-    name,
+    options: {
+      language: 'zh-CN',
+      pitch,
+      rate: profile.rate,
+    },
   };
 }
 
-/** @deprecated 使用 resolveFamilySpeechProfile */
-export async function resolveFamilySpeechVoice(title: FamilyTitle): Promise<string | undefined> {
-  const profile = await resolveFamilySpeechProfile(title);
-  return profile.voice;
+export async function resolveVoiceLabel(voiceId?: string): Promise<string | undefined> {
+  if (!voiceId) return undefined;
+  const options = await listZhVoiceOptions();
+  return options.find((item) => item.id === voiceId)?.label;
 }
 
-/** @deprecated 使用 resolveFamilySpeechProfile */
-export function getFamilySpeechOptions(title: FamilyTitle): Speech.SpeechOptions {
+export function getDefaultVoiceProfiles(): Array<{
+  id: string;
+  label: string;
+  profile: FamilyVoiceProfile;
+}> {
+  const slots: Array<{ label: string; profile: FamilyVoiceProfile }> = [
+    { label: '男声·长辈', profile: { gender: 'male', age: 'elder', pitch: 0.66, rate: 0.78 } },
+    { label: '男声·成年', profile: { gender: 'male', age: 'adult', pitch: 0.78, rate: 0.86 } },
+    { label: '男声·少年', profile: { gender: 'male', age: 'child', pitch: 0.94, rate: 0.96 } },
+    { label: '女声·长辈', profile: { gender: 'female', age: 'elder', pitch: 1.0, rate: 0.8 } },
+    { label: '女声·成年', profile: { gender: 'female', age: 'adult', pitch: 1.16, rate: 0.9 } },
+    { label: '女声·少年', profile: { gender: 'female', age: 'child', pitch: 1.28, rate: 1.0 } },
+  ];
+  return slots.map((slot) => ({
+    id: `${slot.profile.gender}-${slot.profile.age}`,
+    label: slot.label,
+    profile: slot.profile,
+  }));
+}
+
+/** @deprecated 使用 resolveRelationSpeechProfile */
+export async function resolveFamilySpeechProfile(relation: FamilyRelation): Promise<{
+  voice?: string;
+  intro: Speech.SpeechOptions;
+  name: Speech.SpeechOptions;
+}> {
+  const profile = await resolveRelationSpeechProfile(relation);
   return {
-    language: 'zh-CN',
-    pitch: title.voice.pitch,
-    rate: title.voice.rate,
+    voice: profile.voice,
+    intro: profile.options,
+    name: { ...profile.options, rate: Math.min(0.76, profile.options.rate! * 0.82) },
   };
 }

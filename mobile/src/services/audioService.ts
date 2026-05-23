@@ -7,13 +7,14 @@ import {
 } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import type { Animal } from '@/src/data/animals';
-import type { FamilyTitle } from '@/src/data/familyTitles';
-import { getFamilyCallIntro } from '@/src/data/familyTitles';
-import { getSoundSource, getTtsSource } from '@/src/data/soundAssets';
 import {
-  FAMILY_CALL_PAUSE_MS,
-  resolveFamilySpeechProfile,
-} from '@/src/services/familyVoice';
+  FAMILY_TTS_PAUSE_MS,
+  splitTtsSegments,
+  type FamilyRelation,
+} from '@/src/data/familyRelations';
+import { getSoundSource, getTtsSource } from '@/src/data/soundAssets';
+import { getFamilyRecordingUri } from '@/src/services/familyRecordingStore';
+import { resolveRelationSpeechProfile } from '@/src/services/familyVoice';
 
 /**
  * 播放状态管理：
@@ -141,7 +142,7 @@ async function resetAudioEngine(): Promise<void> {
   try {
     await setIsAudioActiveAsync(false);
     await setIsAudioActiveAsync(true);
-    await ensureAudioMode(true);
+    await ensureAudioMode(false);
   } catch {
     /* noop */
   }
@@ -233,7 +234,7 @@ async function speakFallback(
   token: number,
   options: Speech.SpeechOptions = {}
 ): Promise<void> {
-  if (!alive(token)) return;
+  if (!alive(token) || !text.trim()) return;
 
   await new Promise<void>((resolve) => {
     try {
@@ -252,7 +253,7 @@ async function speakFallback(
   });
 }
 
-async function ensureAudioMode(force = false) {
+async function ensureAudioMode(allowsRecording = false) {
   try {
     await setIsAudioActiveAsync(true);
     await setAudioModeAsync({
@@ -260,10 +261,10 @@ async function ensureAudioMode(force = false) {
       interruptionMode: 'mixWithOthers',
       shouldPlayInBackground: false,
       shouldRouteThroughEarpiece: false,
-      allowsRecording: false,
+      allowsRecording,
     });
   } catch {
-    if (!force) return;
+    /* noop */
   }
 }
 
@@ -272,7 +273,7 @@ export const audioService = {
     if (!animal) return;
     const token = await beginPlayback();
 
-    await ensureAudioMode();
+    await ensureAudioMode(false);
     if (!alive(token)) return;
 
     const ttsSource = getTtsSource(animal.id);
@@ -303,35 +304,64 @@ export const audioService = {
     await haltPlayback();
   },
 
-  async speakCallText(text: string): Promise<void> {
+  async speakCallText(text: string, options: Speech.SpeechOptions = {}): Promise<void> {
     const token = await beginPlayback();
-    await ensureAudioMode();
+    await ensureAudioMode(false);
     if (!alive(token)) return;
-    await speakFallback(text, token);
+    await speakFallback(text, token, options);
   },
 
-  async speakFamilyCall(title: FamilyTitle): Promise<void> {
+  async speakFamilyRelation(relation: FamilyRelation): Promise<void> {
     const token = await beginPlayback();
-    await ensureAudioMode();
+    await ensureAudioMode(false);
     if (!alive(token)) return;
 
-    const { voice, intro, name } = await resolveFamilySpeechProfile(title);
-    const withVoice = (options: Speech.SpeechOptions): Speech.SpeechOptions => ({
-      ...options,
+    if (relation.voiceMode === 'recording') {
+      const recordingUri = await getFamilyRecordingUri(relation.id);
+      if (recordingUri) {
+        await playSource({ uri: recordingUri }, token);
+      }
+      return;
+    }
+
+    const { voice, options } = await resolveRelationSpeechProfile(relation);
+    const withVoice = (speechOptions: Speech.SpeechOptions): Speech.SpeechOptions => ({
+      ...speechOptions,
       ...(voice ? { voice } : {}),
     });
 
-    await speakFallback(getFamilyCallIntro(title.name), token, withVoice(intro));
-    if (!alive(token)) return;
+    const segments = splitTtsSegments(relation.ttsText);
+    for (let i = 0; i < segments.length; i += 1) {
+      if (!alive(token)) return;
+      await speakFallback(segments[i], token, withVoice(options));
+      if (i < segments.length - 1) {
+        await wait(FAMILY_TTS_PAUSE_MS);
+      }
+    }
+  },
 
-    await wait(FAMILY_CALL_PAUSE_MS);
+  async playRecordingUri(uri: string): Promise<void> {
+    const token = await beginPlayback();
+    await ensureAudioMode(false);
     if (!alive(token)) return;
+    await playSource({ uri }, token);
+  },
 
-    await speakFallback(title.name, token, withVoice(name));
+  /** @deprecated 使用 speakFamilyRelation */
+  async speakFamilyCall(relation: FamilyRelation): Promise<void> {
+    await this.speakFamilyRelation(relation);
   },
 
   async recover(): Promise<void> {
     currentToken++;
     await resetAudioEngine();
+  },
+
+  async prepareRecordingMode(): Promise<void> {
+    await ensureAudioMode(true);
+  },
+
+  async preparePlaybackMode(): Promise<void> {
+    await ensureAudioMode(false);
   },
 };

@@ -1,16 +1,26 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { FamilyTitle } from '@/src/data/familyTitles';
+import type { FamilyRelation } from '@/src/data/familyRelations';
 import { colors } from '@/src/theme/colors';
 import type { FamilyCardSize } from '@/src/utils/pagination';
 
 type Props = {
-  title: FamilyTitle;
+  relation: FamilyRelation;
   imageUri?: string | null;
   editMode?: boolean;
+  selected?: boolean;
   isActive?: boolean;
+  onPress: () => void;
+  onSelectPress?: () => void;
+  size?: FamilyCardSize;
+  imageSize?: number;
+};
+
+type AddCardProps = {
   onPress: () => void;
   size?: FamilyCardSize;
   imageSize?: number;
+  label?: string;
 };
 
 const NAME_HEIGHT = {
@@ -31,12 +41,43 @@ const EMOJI_SIZE = {
   large: 0.66,
 } as const;
 
+export function FamilyAddCard({
+  onPress,
+  size = 'phone',
+  imageSize,
+  label = '添加关系',
+}: AddCardProps) {
+  const mediaStyle = imageSize
+    ? { width: imageSize, height: imageSize }
+    : styles.mediaSquare;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.card, styles.addCard, pressed && styles.cardPressed]}
+      onPress={onPress}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+    >
+      <View style={[styles.mediaArea, mediaStyle, styles.addMedia]}>
+        <FontAwesome name="plus" size={imageSize ? imageSize * 0.28 : 36} color={colors.primary} />
+      </View>
+      <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
+        <Text style={[styles.name, styles.addName, { fontSize: NAME_SIZE[size] }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export function FamilyCard({
-  title,
+  relation,
   imageUri,
   editMode = false,
+  selected = false,
   isActive = false,
   onPress,
+  onSelectPress,
   size = 'phone',
   imageSize,
 }: Props) {
@@ -52,51 +93,65 @@ export function FamilyCard({
         ? 56
         : 48;
 
+  const showPhoto = relation.imageSource === 'photo' && imageUri;
+
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.card,
         isActive && styles.cardActive,
         editMode && styles.cardEdit,
-        pressed && styles.cardPressed,
+        editMode && selected && styles.cardSelected,
       ]}
-      onPress={onPress}
-      accessibilityLabel={editMode ? `更换${title.name}的照片` : title.name}
-      accessibilityRole="button"
     >
-      <View style={[styles.mediaArea, mediaStyle]}>
-        {imageUri ? (
-          <Image
-            key={imageUri}
-            source={{ uri: imageUri }}
-            style={styles.photo}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.emojiWrap}>
-            <Text style={[styles.emoji, { fontSize: emojiSize }]}>{title.emoji}</Text>
-          </View>
-        )}
-        {editMode && (
-          <View style={styles.editBadge}>
-            <Text style={styles.editBadgeText}>换图</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
-        <Text
-          style={[
-            styles.name,
-            { fontSize: NAME_SIZE[size] },
-            isActive && styles.nameActive,
-          ]}
-          numberOfLines={1}
+      {editMode && (
+        <Pressable
+          style={[styles.selectBadge, selected && styles.selectBadgeActive]}
+          onPress={onSelectPress}
+          hitSlop={8}
+          accessibilityLabel={`${selected ? '取消选中' : '选中'}${relation.name}`}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selected }}
         >
-          {title.name}
-        </Text>
-      </View>
-    </Pressable>
+          {selected && <FontAwesome name="check" size={12} color="#fff" />}
+        </Pressable>
+      )}
+
+      <Pressable
+        style={({ pressed }) => [styles.cardBody, pressed && styles.cardPressed]}
+        onPress={onPress}
+        accessibilityLabel={editMode ? `编辑${relation.name}` : relation.name}
+        accessibilityRole="button"
+      >
+        <View style={[styles.mediaArea, mediaStyle]}>
+          {showPhoto ? (
+            <Image key={imageUri} source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />
+          ) : (
+            <View style={styles.emojiWrap}>
+              <Text style={[styles.emoji, { fontSize: emojiSize }]}>{relation.emoji}</Text>
+            </View>
+          )}
+          {editMode && (
+            <View style={styles.editBadge}>
+              <Text style={styles.editBadgeText}>编辑</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
+          <Text
+            style={[
+              styles.name,
+              { fontSize: NAME_SIZE[size] },
+              isActive && styles.nameActive,
+            ]}
+            numberOfLines={1}
+          >
+            {relation.name}
+          </Text>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -114,6 +169,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 4,
+    width: '100%',
+  },
+  cardBody: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  addCard: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    backgroundColor: '#FFF9F6',
   },
   cardActive: {
     backgroundColor: colors.primaryLight,
@@ -126,14 +192,40 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderStyle: 'dashed',
   },
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
   cardPressed: {
     transform: [{ scale: 0.98 }],
+  },
+  selectBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectBadgeActive: {
+    backgroundColor: colors.primary,
   },
   mediaArea: {
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFF8F0',
     marginBottom: 8,
+  },
+  addMedia: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF1EA',
   },
   mediaSquare: {
     width: '100%',
@@ -175,6 +267,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#333',
     textAlign: 'center',
+  },
+  addName: {
+    color: colors.primary,
   },
   nameActive: {
     color: '#fff',

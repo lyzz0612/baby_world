@@ -94,7 +94,7 @@ function familyCardSizeForImage(imageSize: number): FamilyCardSize {
   return 'phone';
 }
 
-/** 称呼页：单页展示全部项，正方形大图 + 大间距防误触 */
+/** 关系谱页：单页展示全部项，正方形大图 + 大间距防误触 */
 export function getFamilyGridLayout(
   screenWidth: number,
   _screenHeight: number,
