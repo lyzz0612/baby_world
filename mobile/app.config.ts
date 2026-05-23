@@ -19,12 +19,12 @@ const VERSION_CODE = (() => {
 })();
 
 const config: ExpoConfig = {
-  name: '动物乐园',
-  slug: 'animal-app',
+  name: '宝宝世界',
+  slug: 'baby-world',
   version: VERSION_NAME,
   orientation: 'default',
   icon: './assets/images/icon.png',
-  scheme: 'animalapp',
+  scheme: 'babyworld',
   userInterfaceStyle: 'light',
   newArchEnabled: true,
   splash: {
@@ -34,10 +34,10 @@ const config: ExpoConfig = {
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.animal.app',
+    bundleIdentifier: 'com.babyworld.app',
   },
   android: {
-    package: 'com.animal.app',
+    package: 'com.babyworld.app',
     versionCode: VERSION_CODE,
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',

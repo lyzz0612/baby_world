@@ -1,6 +1,6 @@
-# 动物乐园（React Native / Expo）
+# 宝宝世界（React Native / Expo）
 
-唯一客户端。面向 Android 平板（含荣耀未成年人模式场景）。SDK 54、expo-router、原生 UI 渲染。
+Baby World 唯一客户端。面向 Android 平板（含荣耀未成年人模式场景）。SDK 54、expo-router、原生 UI 渲染。
 
 ## 开发
 
@@ -58,8 +58,8 @@ CI 走的就是同一套（见 `.github/workflows/mobile-release.yml` 与 `docs/
 
 | 项 | 值 |
 |---|---|
-| Android package | `com.animal.app` |
-| 显示名 | 动物乐园 |
+| Android package | `com.babyworld.app` |
+| 显示名 | 宝宝世界 |
 | 权限 | `INTERNET`（OTA 检查 + 下载）、`REQUEST_INSTALL_PACKAGES`（触发安装器） |
 
 > 之前迁移过程中曾用 `blockedPermissions` 屏蔽 INTERNET 试图规避荣耀未成年人模式。OTA 方案确定后必须恢复 INTERNET，否则更新链路完全断。是否仍被荣耀拦截以真机验证为准。

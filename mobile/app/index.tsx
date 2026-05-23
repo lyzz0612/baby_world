@@ -71,10 +71,10 @@ export default function HomeScreen() {
             🎨
           </Animated.Text>
           <Text style={[styles.title, { fontSize: sizes.title, lineHeight: sizes.title * 1.1 }]}>
-            动物乐园
+            宝宝世界
           </Text>
           <Text style={[styles.subtitle, { fontSize: sizes.subtitle }]}>
-            和小动物们做朋友吧～
+            学习玩耍，快乐成长～
           </Text>
         </View>
 

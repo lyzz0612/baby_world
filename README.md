@@ -1,8 +1,14 @@
-# 动物乐园
+# Baby World
 
-面向儿童的动物认知 Android 应用。React Native + Expo SDK 54，内置应用内自动更新（OTA）。
+给我家宝宝定制的 Android 应用，把**学习**和**娱乐**放在一起，按 2 岁起的认知与操作习惯慢慢迭代。
 
-迁移到 RN 的原因：旧 Capacitor 客户端在荣耀等厂商「未成年人模式」下会被识别为 WebView 类应用而被拦截。
+当前首个模块是「认识动物」——点按认识动物、听叫声，适合低龄启蒙；后续会继续加更多适合 2 岁+ 的小游戏和认知内容。
+
+## 关于这个 App
+
+- **为谁做**：给我家宝宝（从 2 岁开始用）
+- **做什么**：寓教于乐，既能玩也能学
+- **怎么演进**：按年龄和兴趣逐步加模块，不追求大而全，优先做宝宝真正会用的
 
 ## 快速开始
 
@@ -40,7 +46,7 @@ npm run web                # 仅供 UI 调试，不能验证音频/OTA
 
 ## 应用内自动更新（OTA）
 
-每次 push 到 `feature/animal-learning`、推 tag `v*`、或手动 `workflow_dispatch`，CI 会：
+每次 push 到 `master`、推 tag `v*`、或手动 `workflow_dispatch`，CI 会：
 
 1. 从 R2 `latest.json` 算下一版本号（默认 `PATCH + 1`）
 2. `npx expo prebuild --platform android` 生成 native 工程（不入仓）
