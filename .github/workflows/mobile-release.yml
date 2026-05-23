@@ -116,15 +116,23 @@ jobs:
 
       - name: Generate latest.json
         run: |
+          apk_path=$(find mobile/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [[ -z "$apk_path" || ! -f "$apk_path" ]]; then
+            echo "Release APK not found under mobile/android/app/build/outputs/apk/release" >&2
+            exit 1
+          fi
+          APK_MD5=$(md5sum "$apk_path" | awk '{print tolower($1)}')
+          echo "APK_MD5=${APK_MD5}" >> "$GITHUB_ENV"
           jq -n \
             --argjson versionCode "${VERSION_CODE}" \
             --arg versionName "${VERSION_NAME}" \
             --arg content "${RELEASE_NOTES}" \
             --argjson minSupport "${MIN_SUPPORT}" \
             --arg url "${APK_PUBLIC_URL}" \
-            '{versionCode: $versionCode, versionName: $versionName, content: $content, minSupport: $minSupport, url: $url}' \
+            --arg md5 "${APK_MD5}" \
+            '{versionCode: $versionCode, versionName: $versionName, content: $content, minSupport: $minSupport, url: $url, md5: $md5}' \
             > "${RUNNER_TEMP}/latest.json"
-          jq '{versionName, versionCode, url, minSupport}' "${RUNNER_TEMP}/latest.json"
+          jq '{versionName, versionCode, url, minSupport, md5}' "${RUNNER_TEMP}/latest.json"
 
       - name: Upload to Cloudflare R2
         env:
@@ -144,10 +152,12 @@ jobs:
           fi
           aws s3 cp "$apk_path" "s3://${R2_BUCKET}/${PATH_APK}" \
             --endpoint-url "${R2_ENDPOINT}" \
-            --content-type "application/vnd.android.package-archive"
+            --content-type "application/vnd.android.package-archive" \
+            --cache-control "no-cache, no-store, must-revalidate"
           aws s3 cp "${RUNNER_TEMP}/latest.json" "s3://${R2_BUCKET}/${PATH_JSON}" \
             --endpoint-url "${R2_ENDPOINT}" \
-            --content-type "application/json"
+            --content-type "application/json" \
+            --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

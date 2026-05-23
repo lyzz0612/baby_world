@@ -10,10 +10,20 @@ import { Alert, Platform } from 'react-native';
  * 远端 minSupport > 本机 versionCode 时只给「立即更新」（best-effort 强制更新）。
  *
  * latest.json 结构与旧 Capacitor / fccaikai 客户端完全一致：
- *   { versionCode, versionName, content, minSupport, url }
+ *   { versionCode, versionName, content, minSupport, url, md5? }
  *   - content：用 `#` 分隔的多行更新说明
- *   - url：APK 下载地址（HTTPS）
+ *   - url：APK 下载地址（HTTPS，含 ?vc=versionCode 用于 CDN 缓存穿透）
+ *   - md5：APK 小写 hex MD5；客户端下载后校验，缺失则跳过（兼容旧 manifest）
  */
+
+function normalizeMd5(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function appendQueryParam(url: string, key: string, value: string): string {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
 
 type LatestManifest = {
   versionCode: number;
@@ -21,6 +31,7 @@ type LatestManifest = {
   content?: string;
   minSupport?: number;
   url: string;
+  md5?: string;
 };
 
 function getCurrentVersionCode(): number {
@@ -31,10 +42,11 @@ function getCurrentVersionCode(): number {
 }
 
 function getUpdateCheckUrl(): string | null {
-  const extra = Constants.expoConfig?.extra as
-    | { updateCheckUrl?: string }
-    | undefined;
-  const url = extra?.updateCheckUrl;
+  type UpdateExtra = { updateCheckUrl?: string };
+  const fromExtra =
+    (Constants.expoConfig?.extra as UpdateExtra | undefined)?.updateCheckUrl ??
+    (Constants.manifest as { extra?: UpdateExtra } | null)?.extra?.updateCheckUrl;
+  const url = fromExtra ?? process.env.EXPO_PUBLIC_UPDATE_CHECK_URL;
   if (!url) return null;
   // 占位域名直接跳过，避免开发环境无意义的网络请求
   if (url.includes('download.example.com')) return null;
@@ -43,7 +55,8 @@ function getUpdateCheckUrl(): string | null {
 
 async function fetchManifest(url: string): Promise<LatestManifest | null> {
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const bustUrl = appendQueryParam(url, 't', String(Date.now()));
+    const res = await fetch(bustUrl, { cache: 'no-store' });
     if (!res.ok) return null;
     const json = (await res.json()) as LatestManifest;
     if (
@@ -63,6 +76,15 @@ async function downloadAndInstall(manifest: LatestManifest): Promise<void> {
   const file = await File.downloadFileAsync(manifest.url, Paths.cache, {
     idempotent: true,
   });
+
+  if (manifest.md5) {
+    const expected = normalizeMd5(manifest.md5);
+    const actual = file.md5 ? normalizeMd5(file.md5) : null;
+    if (!actual || actual !== expected) {
+      throw new Error('apk md5 mismatch');
+    }
+  }
+
   const contentUri = file.contentUri;
   if (!contentUri) throw new Error('contentUri unavailable');
   await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
@@ -81,7 +103,11 @@ function showUpdateDialog(manifest: LatestManifest, force: boolean): Promise<voi
     try {
       await downloadAndInstall(manifest);
     } catch (e) {
-      Alert.alert('更新失败', '下载或安装出现问题，请稍后重试。');
+      const message =
+        e instanceof Error && e.message === 'apk md5 mismatch'
+          ? '安装包校验失败，可能下载不完整或被缓存。请稍后重试。'
+          : '下载或安装出现问题，请稍后重试。';
+      Alert.alert('更新失败', message);
       console.warn('[update] install failed', e);
     } finally {
       resolve();

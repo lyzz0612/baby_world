@@ -6,11 +6,11 @@ import type { ExpoConfig } from 'expo/config';
  *   - APP_VERSION_CODE            → android.versionCode
  *   - EXPO_PUBLIC_UPDATE_CHECK_URL → expo.extra.updateCheckUrl（OTA 检查地址）
  *
- * 缺失时使用占位值；客户端在占位 URL 下会跳过 OTA 检查（见 updateChecker.ts）。
+ * 缺失时回退到项目 CDN 默认地址；占位域名 download.example.com 仍视为未配置。
  */
 const UPDATE_CHECK_URL =
   process.env.EXPO_PUBLIC_UPDATE_CHECK_URL ??
-  'https://download.example.com/update/latest.json';
+  'https://r2.skyup.top/update/latest.json';
 
 const VERSION_NAME = process.env.APP_VERSION_NAME ?? '1.0.0';
 const VERSION_CODE = (() => {
