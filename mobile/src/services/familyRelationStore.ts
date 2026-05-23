@@ -12,6 +12,11 @@ const STORAGE_KEY = 'family-relations-v2';
 let cache: FamilyRelation[] | null = null;
 let loadPromise: Promise<FamilyRelation[]> | null = null;
 
+function compareRelations(a: FamilyRelation, b: FamilyRelation): number {
+  const orderDiff = (a.sortOrder ?? a.createdAt) - (b.sortOrder ?? b.createdAt);
+  return orderDiff !== 0 ? orderDiff : a.createdAt - b.createdAt;
+}
+
 async function loadRelations(): Promise<FamilyRelation[]> {
   if (cache) return cache;
   if (!loadPromise) {
@@ -19,7 +24,7 @@ async function loadRelations(): Promise<FamilyRelation[]> {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const parsed = raw ? (JSON.parse(raw) as FamilyRelation[]) : [];
-        cache = Array.isArray(parsed) ? parsed.map(normalizeRelation) : [];
+        cache = Array.isArray(parsed) ? parsed.map(normalizeRelation).sort(compareRelations) : [];
       } catch {
         cache = [];
       }
@@ -30,8 +35,8 @@ async function loadRelations(): Promise<FamilyRelation[]> {
 }
 
 async function persistRelations(relations: FamilyRelation[]): Promise<void> {
-  cache = relations;
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(relations));
+  cache = [...relations].sort(compareRelations);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
 }
 
 export function createRelationId(): string {
@@ -40,13 +45,18 @@ export function createRelationId(): string {
 
 export async function getFamilyRelations(): Promise<FamilyRelation[]> {
   const relations = await loadRelations();
-  return [...relations].sort((a, b) => a.createdAt - b.createdAt);
+  return [...relations].sort(compareRelations);
 }
 
 export async function saveFamilyRelation(relation: FamilyRelation): Promise<FamilyRelation> {
-  const normalized = normalizeRelation(relation);
   const relations = await loadRelations();
-  const index = relations.findIndex((item) => item.id === normalized.id);
+  const index = relations.findIndex((item) => item.id === relation.id);
+  const maxOrder = relations.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1);
+  const normalized = normalizeRelation({
+    ...relation,
+    sortOrder: index >= 0 ? relations[index].sortOrder : maxOrder + 1,
+  });
+
   if (index >= 0) {
     relations[index] = normalized;
   } else {
@@ -56,11 +66,34 @@ export async function saveFamilyRelation(relation: FamilyRelation): Promise<Fami
   return normalized;
 }
 
+export async function reorderFamilyRelations(orderedIds: string[]): Promise<FamilyRelation[]> {
+  const relations = await loadRelations();
+  const byId = new Map(relations.map((item) => [item.id, item]));
+  const reordered: FamilyRelation[] = [];
+
+  orderedIds.forEach((id, index) => {
+    const item = byId.get(id);
+    if (!item) return;
+    reordered.push({ ...item, sortOrder: index });
+    byId.delete(id);
+  });
+
+  byId.forEach((item) => {
+    reordered.push({ ...item, sortOrder: reordered.length });
+  });
+
+  await persistRelations(reordered);
+  return reordered;
+}
+
 export async function deleteFamilyRelations(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const idSet = new Set(ids);
   const relations = await loadRelations();
-  await persistRelations(relations.filter((item) => !idSet.has(item.id)));
+  const remaining = relations
+    .filter((item) => !idSet.has(item.id))
+    .map((item, index) => ({ ...item, sortOrder: index }));
+  await persistRelations(remaining);
   await Promise.all(
     ids.map(async (id) => {
       await deleteFamilyImagesForId(id);

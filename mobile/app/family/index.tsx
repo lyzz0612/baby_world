@@ -11,8 +11,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FamilyAddCard, FamilyCard } from '@/components/FamilyCard';
+import { FamilyDraggableGridItem } from '@/components/FamilyDraggableGridItem';
 import { FamilyImageModal } from '@/components/FamilyImageModal';
 import { FamilyRelationEditor } from '@/components/FamilyRelationEditor';
 import { ScreenBackground } from '@/components/ScreenBackground';
@@ -24,10 +26,12 @@ import {
   createNewRelationDraft,
   deleteFamilyRelations,
   getFamilyRelations,
+  reorderFamilyRelations,
   saveFamilyRelation,
 } from '@/src/services/familyRelationStore';
 import { colors } from '@/src/theme/colors';
-import { getFamilyGridLayout } from '@/src/utils/pagination';
+import { FAMILY_LAYOUT_REFERENCE_COUNT, getFamilyGridLayout } from '@/src/utils/pagination';
+import { findDropIndex, type LayoutRect } from '@/src/utils/familyGridReorder';
 
 type ImageMaps = {
   list: Record<string, string>;
@@ -65,16 +69,38 @@ export default function FamilyScreen() {
   const [editorRelation, setEditorRelation] = useState<FamilyRelation | null>(null);
   const [editorListUri, setEditorListUri] = useState<string | null>(null);
   const [editorDetailUri, setEditorDetailUri] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const playTokenRef = useRef(0);
+  const itemLayoutsRef = useRef(new Map<string, LayoutRect>());
+  const dragOriginX = useSharedValue(0);
+  const dragOriginY = useSharedValue(0);
+  const dragOriginW = useSharedValue(0);
+  const dragTranslateX = useSharedValue(0);
+  const dragTranslateY = useSharedValue(0);
 
-  const displayCount = editMode ? relations.length + 1 : Math.max(relations.length, relations.length === 0 ? 1 : 0);
+  const visibleItemCount = relations.length + (editMode ? 1 : 0);
+  const gridItemCount = Math.max(visibleItemCount || 1, FAMILY_LAYOUT_REFERENCE_COUNT);
 
   const gridLayout = useMemo(
-    () => getFamilyGridLayout(width, height, displayCount, gridWidth, gridHeight),
-    [width, height, displayCount, gridWidth, gridHeight]
+    () => getFamilyGridLayout(width, height, gridItemCount, gridWidth),
+    [width, height, gridItemCount, gridWidth]
   );
   const { numColumns, cardSize, gap, rowGap, imageSize } = gridLayout;
+  const dragEnabled = editMode && selectedIds.length === 0 && relations.length > 1;
+  const draggingRelation = useMemo(
+    () => relations.find((item) => item.id === draggingId) ?? null,
+    [draggingId, relations]
+  );
+
+  const floatingDragStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: dragOriginX.value + dragTranslateX.value,
+    top: dragOriginY.value + dragTranslateY.value,
+    width: dragOriginW.value,
+    zIndex: 1000,
+    elevation: 16,
+  }));
 
   const refreshAll = useCallback(async () => {
     const [nextRelations, imageMap] = await Promise.all([getFamilyRelations(), getFamilyImageMap()]);
@@ -157,6 +183,65 @@ export default function FamilyScreen() {
     );
   }, []);
 
+  const handleMeasureItem = useCallback((id: string, rect: LayoutRect) => {
+    itemLayoutsRef.current.set(id, rect);
+  }, []);
+
+  const handleDragStart = useCallback(
+    (id: string, rect: LayoutRect) => {
+      dragOriginX.value = rect.x;
+      dragOriginY.value = rect.y;
+      dragOriginW.value = rect.width;
+      dragTranslateX.value = 0;
+      dragTranslateY.value = 0;
+      setDraggingId(id);
+    },
+    [dragOriginW, dragOriginX, dragOriginY, dragTranslateX, dragTranslateY]
+  );
+
+  const handleDragMove = useCallback(
+    (translationX: number, translationY: number) => {
+      dragTranslateX.value = translationX;
+      dragTranslateY.value = translationY;
+    },
+    [dragTranslateX, dragTranslateY]
+  );
+
+  const moveRelationToIndex = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setRelations((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, item);
+      void reorderFamilyRelations(next.map((entry) => entry.id));
+      return next;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (absoluteX: number, absoluteY: number) => {
+      const currentId = draggingId;
+      dragTranslateX.value = 0;
+      dragTranslateY.value = 0;
+      setDraggingId(null);
+
+      if (!currentId) return;
+      const fromIndex = relations.findIndex((item) => item.id === currentId);
+      if (fromIndex < 0) return;
+
+      const dropIndex = findDropIndex(
+        absoluteX,
+        absoluteY,
+        relations.map((item) => item.id),
+        itemLayoutsRef.current,
+        currentId
+      );
+      if (dropIndex == null) return;
+      moveRelationToIndex(fromIndex, dropIndex);
+    },
+    [draggingId, dragTranslateX, moveRelationToIndex, relations]
+  );
+
   const handleCardPress = useCallback(
     async (relation: FamilyRelation) => {
       if (editMode) {
@@ -173,28 +258,47 @@ export default function FamilyScreen() {
   const handleEditorSave = useCallback(
     async (
       relation: FamilyRelation,
-      images: { listImageUri?: string | null; detailImageUri?: string | null }
+      images: { listImageUri?: string | null; detailImageUri?: string | null; removedListImage?: boolean }
     ) => {
-      if (relation.imageSource === 'emoji') {
+      const existingListUri = listImageMap[relation.id] ?? null;
+      const nextListUri = images.removedListImage
+        ? null
+        : images.listImageUri ?? existingListUri;
+      const relationToSave: FamilyRelation = {
+        ...relation,
+        imageSource: nextListUri ? 'photo' : 'emoji',
+      };
+
+      if (relationToSave.imageSource === 'emoji') {
         await deleteFamilyListImage(relation.id);
       }
-      await saveFamilyRelation(relation);
+
+      await saveFamilyRelation(relationToSave);
+
       setListImageMap((prev) => {
         const next = { ...prev };
-        if (relation.imageSource === 'emoji') {
+        if (nextListUri) {
+          next[relation.id] = nextListUri;
+        } else {
           delete next[relation.id];
-        } else if (images.listImageUri) {
-          next[relation.id] = images.listImageUri;
         }
         return next;
       });
+
       if (images.detailImageUri) {
         setDetailImageMap((prev) => ({ ...prev, [relation.id]: images.detailImageUri! }));
+      } else if (images.removedListImage) {
+        setDetailImageMap((prev) => {
+          const next = { ...prev };
+          delete next[relation.id];
+          return next;
+        });
       }
+
       await refreshAll();
       resetEditor();
     },
-    [refreshAll, resetEditor]
+    [listImageMap, refreshAll, resetEditor]
   );
 
   const replayModal = useCallback(async () => {
@@ -227,7 +331,15 @@ export default function FamilyScreen() {
     setModalRelation(null);
     setActiveId(null);
     setSelectedIds([]);
+    if (editorRelation) {
+      closeEditor();
+    }
+    const leavingEdit = editMode;
     setEditMode((value) => !value);
+    setDraggingId(null);
+    if (leavingEdit) {
+      void refreshAll();
+    }
   };
 
   const confirmBatchDelete = () => {
@@ -312,46 +424,56 @@ export default function FamilyScreen() {
           <Text style={styles.editHint}>
             {selectedIds.length > 0
               ? `已选 ${selectedIds.length} 项 · 点右上角 🗑 删除，或点卡片继续编辑`
-              : '点卡片编辑详情 · 点卡片右上角勾选后可批量删除'}
+              : '长按拖动排序 · 点卡片编辑 · 右上角勾选可删除'}
           </Text>
         )}
 
         <View style={styles.gridWrap} onLayout={onGridLayout}>
-          {relations.length === 0 && !editMode ? (
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyTitle}>还没有关系</Text>
-              <Text style={styles.emptyHint}>手动添加家人、亲友，让宝宝认识他们</Text>
-              <View style={styles.emptyCardWrap}>
-                <FamilyAddCard
-                  onPress={() => void openAddEditor()}
-                  size={cardSize}
-                  imageSize={imageSize ?? 120}
-                  label="添加第一个关系"
-                />
+          <ScrollView
+            contentContainerStyle={styles.gridScroll}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            scrollEnabled={!draggingId}
+          >
+            {relations.length === 0 && !editMode && (
+              <View style={styles.emptyHintWrap}>
+                <Text style={styles.emptyTitle}>还没有关系</Text>
+                <Text style={styles.emptyHint}>手动添加家人、亲友，让宝宝认识他们</Text>
               </View>
-            </View>
-          ) : (
-            <ScrollView
-              contentContainerStyle={styles.gridScroll}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              <View style={[styles.grid, { gap, rowGap }]}>
-                {editMode && (
-                  <View
-                    style={[
-                      styles.gridItem,
-                      cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
-                    ]}
-                  >
-                    <FamilyAddCard
-                      onPress={() => void openAddEditor()}
-                      size={cardSize}
-                      imageSize={imageSize}
-                    />
-                  </View>
-                )}
-                {relations.map((relation) => (
+            )}
+            <View style={[styles.grid, { gap, rowGap }]}>
+              {(editMode || relations.length === 0) && (
+                <View
+                  style={[
+                    styles.gridItem,
+                    cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
+                  ]}
+                >
+                  <FamilyAddCard
+                    onPress={() => void openAddEditor()}
+                    size={cardSize}
+                    imageSize={imageSize}
+                    label={relations.length === 0 ? '添加第一个关系' : '添加关系'}
+                  />
+                </View>
+              )}
+              {relations.map((relation) => {
+                const card = (
+                  <FamilyCard
+                    relation={relation}
+                    imageUri={listImageMap[relation.id]}
+                    editMode={editMode}
+                    selected={selectedIds.includes(relation.id)}
+                    isActive={activeId === relation.id}
+                    size={cardSize}
+                    imageSize={imageSize}
+                    disabled={!!draggingId}
+                    onPress={() => void handleCardPress(relation)}
+                    onSelectPress={() => toggleRelationSelection(relation.id)}
+                  />
+                );
+
+                return (
                   <View
                     key={relation.id}
                     style={[
@@ -359,22 +481,26 @@ export default function FamilyScreen() {
                       cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
                     ]}
                   >
-                    <FamilyCard
-                      relation={relation}
-                      imageUri={listImageMap[relation.id]}
-                      editMode={editMode}
-                      selected={selectedIds.includes(relation.id)}
-                      isActive={activeId === relation.id}
-                      size={cardSize}
-                      imageSize={imageSize}
-                      onPress={() => void handleCardPress(relation)}
-                      onSelectPress={() => toggleRelationSelection(relation.id)}
-                    />
+                    {dragEnabled ? (
+                      <FamilyDraggableGridItem
+                        itemId={relation.id}
+                        dragEnabled={dragEnabled}
+                        isDragging={draggingId === relation.id}
+                        onMeasure={handleMeasureItem}
+                        onDragStart={handleDragStart}
+                        onDragMove={handleDragMove}
+                        onDragEnd={handleDragEnd}
+                      >
+                        {card}
+                      </FamilyDraggableGridItem>
+                    ) : (
+                      card
+                    )}
                   </View>
-                ))}
-              </View>
-            </ScrollView>
-          )}
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
 
         <Text style={styles.hint}>
@@ -403,7 +529,23 @@ export default function FamilyScreen() {
           onClose={closeEditor}
           onSave={(relation, images) => void handleEditorSave(relation, images)}
         />
+
       </SafeAreaView>
+
+      {draggingId && draggingRelation && (
+        <Animated.View pointerEvents="none" style={styles.dragOverlay}>
+          <Animated.View style={[styles.dragFloating, floatingDragStyle]}>
+            <FamilyCard
+              relation={draggingRelation}
+              imageUri={listImageMap[draggingRelation.id]}
+              editMode={editMode}
+              size={cardSize}
+              imageSize={imageSize}
+              onPress={() => undefined}
+            />
+          </Animated.View>
+        </Animated.View>
+      )}
     </ScreenBackground>
   );
 }
@@ -481,11 +623,11 @@ const styles = StyleSheet.create({
   gridWrap: {
     flex: 1,
     minHeight: 0,
+    overflow: 'visible',
   },
-  emptyWrap: {
-    flex: 1,
+  emptyHintWrap: {
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 20,
     paddingHorizontal: 12,
   },
   emptyTitle: {
@@ -498,16 +640,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyCardWrap: {
-    width: '100%',
-    maxWidth: 220,
-    alignItems: 'center',
   },
   gridScroll: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   grid: {
     flexDirection: 'row',
@@ -522,5 +658,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     marginTop: 10,
+  },
+  dragFloating: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+  },
+  dragOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 16,
   },
 });

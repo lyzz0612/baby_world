@@ -16,7 +16,7 @@ export function FamilyImageModal({ visible, relation, imageUri, onClose, onRepla
 
   if (!relation) return null;
 
-  const showPhoto = relation.imageSource === 'photo' && imageUri;
+  const showPhoto = Boolean(imageUri);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -37,7 +37,7 @@ export function FamilyImageModal({ visible, relation, imageUri, onClose, onRepla
             }}
             accessibilityLabel={`重播${relation.name}的语音`}
           >
-            {showPhoto ? (
+            {showPhoto && imageUri ? (
               <Image
                 key={imageUri}
                 source={{ uri: imageUri }}

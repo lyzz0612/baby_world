@@ -22,6 +22,8 @@ export type FamilyRelation = {
   ttsText: string;
   ttsVoiceId?: string;
   voiceProfile: FamilyVoiceProfile;
+  /** 列表排序，越小越靠前 */
+  sortOrder: number;
   createdAt: number;
 };
 
@@ -81,6 +83,7 @@ export function createEmptyRelation(id: string): FamilyRelation {
     voiceMode: 'tts',
     ttsText: '',
     voiceProfile: { ...DEFAULT_VOICE_PROFILE },
+    sortOrder: Date.now(),
     createdAt: Date.now(),
   };
 }
@@ -93,6 +96,8 @@ export function normalizeRelation(relation: FamilyRelation): FamilyRelation {
     emoji: relation.emoji || PRESET_FAMILY_EMOJIS[0],
     ttsText: relation.ttsText.trim() ? relation.ttsText : createDefaultTtsText(name),
     voiceProfile: relation.voiceProfile ?? { ...DEFAULT_VOICE_PROFILE },
+    sortOrder:
+      typeof relation.sortOrder === 'number' ? relation.sortOrder : relation.createdAt,
   };
 }
 

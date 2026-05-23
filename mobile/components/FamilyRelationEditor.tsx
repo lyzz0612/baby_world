@@ -36,6 +36,7 @@ import {
 } from '@/src/services/familyRecordingStore';
 import {
   getDefaultVoiceProfiles,
+  hasDistinctVoiceChoices,
   listZhVoiceOptions,
   type ZhVoiceOption,
 } from '@/src/services/familyVoice';
@@ -49,7 +50,11 @@ type Props = {
   onClose: () => void;
   onSave: (
     relation: FamilyRelation,
-    images: { listImageUri?: string | null; detailImageUri?: string | null }
+    images: {
+      listImageUri?: string | null;
+      detailImageUri?: string | null;
+      removedListImage?: boolean;
+    }
   ) => void;
 };
 
@@ -67,6 +72,7 @@ export function FamilyRelationEditor({
   const [draft, setDraft] = useState<FamilyRelation | null>(null);
   const [listUri, setListUri] = useState<string | null>(null);
   const [detailUri, setDetailUri] = useState<string | null>(null);
+  const [removedListImage, setRemovedListImage] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [voiceOptions, setVoiceOptions] = useState<ZhVoiceOption[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,6 +81,10 @@ export function FamilyRelationEditor({
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);
   const voicePresets = useMemo(() => getDefaultVoiceProfiles(), []);
+  const showSystemVoices = useMemo(
+    () => hasDistinctVoiceChoices(voiceOptions),
+    [voiceOptions]
+  );
 
   useEffect(() => {
     if (!visible || !relation) return;
@@ -84,6 +94,7 @@ export function FamilyRelationEditor({
     setDraft({ ...relation, ttsText: initialTts });
     setListUri(listImageUri ?? null);
     setDetailUri(detailImageUri ?? null);
+    setRemovedListImage(false);
     void getFamilyRecordingUri(relation.id).then(setRecordingUri);
   }, [visible, relation, listImageUri, detailImageUri]);
 
@@ -125,6 +136,7 @@ export function FamilyRelationEditor({
         const savedUri = await saveFamilyImage(draft.id, result.assets[0].uri, variant);
         if (variant === 'list') {
           setListUri(savedUri);
+          setRemovedListImage(false);
           updateDraft({ imageSource: 'photo' });
         } else {
           setDetailUri(savedUri);
@@ -140,6 +152,7 @@ export function FamilyRelationEditor({
     (emoji: string) => {
       updateDraft({ emoji, imageSource: 'emoji' });
       setListUri(null);
+      setRemovedListImage(true);
     },
     [updateDraft]
   );
@@ -232,16 +245,18 @@ export function FamilyRelationEditor({
 
     setIsSaving(true);
     try {
-      onSave(normalized, { listImageUri: listUri, detailImageUri: detailUri });
+      onSave(normalized, { listImageUri: listUri, detailImageUri: detailUri, removedListImage });
     } finally {
       setIsSaving(false);
     }
-  }, [draft, detailUri, listUri, onSave, recordingUri]);
+  }, [draft, detailUri, listUri, onSave, recordingUri, removedListImage]);
 
   if (!draft) return null;
 
   const editorWidth = Math.min(width - 32, 520);
-  const imagePreviewSize = Math.min(editorWidth - 48, 160);
+  const previewHeight = Math.min(Math.round((editorWidth - 72) * 0.22), 120);
+  const listPreviewSize = previewHeight;
+  const detailPreviewWidth = Math.round(previewHeight * (4 / 3));
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -255,187 +270,218 @@ export function FamilyRelationEditor({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-            <Text style={styles.sectionLabel}>头像</Text>
-            <View style={styles.imageRow}>
-              <Pressable
-                style={[styles.imagePreview, { width: imagePreviewSize, height: imagePreviewSize }]}
-                onPress={() => void pickImage('list')}
-                accessibilityLabel="选择正方形头像"
-              >
-                {draft.imageSource === 'photo' && listUri ? (
-                  <Image key={listUri} source={{ uri: listUri }} style={styles.imageFill} />
-                ) : (
-                  <Text style={[styles.emojiPreview, { fontSize: imagePreviewSize * 0.45 }]}>
-                    {draft.emoji}
-                  </Text>
-                )}
-                <View style={styles.imageBadge}>
-                  <Text style={styles.imageBadgeText}>列表方图</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>形象</Text>
+              <View style={styles.sectionCard}>
+                <View style={styles.imageGrid}>
+                  <Pressable
+                    style={[styles.listPreview, { width: listPreviewSize, height: listPreviewSize }]}
+                    onPress={() => void pickImage('list')}
+                    accessibilityLabel="选择列表方图"
+                  >
+                    {draft.imageSource === 'photo' && listUri ? (
+                      <Image key={listUri} source={{ uri: listUri }} style={styles.imageFill} />
+                    ) : (
+                      <Text style={[styles.emojiPreview, { fontSize: listPreviewSize * 0.42 }]}>
+                        {draft.emoji}
+                      </Text>
+                    )}
+                    <View style={styles.previewTag}>
+                      <Text style={styles.previewTagText}>方图</Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.detailPreview, { width: detailPreviewWidth, height: previewHeight }]}
+                    onPress={() => void pickImage('detail')}
+                    accessibilityLabel="选择详情横图"
+                  >
+                    {detailUri ? (
+                      <Image
+                        key={detailUri}
+                        source={{ uri: detailUri }}
+                        style={styles.detailImageFill}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.detailPlaceholder}>
+                        <FontAwesome name="plus" size={18} color={colors.textMuted} />
+                        <Text style={styles.detailPlaceholderText}>横图</Text>
+                      </View>
+                    )}
+                    <View style={styles.previewTag}>
+                      <Text style={styles.previewTagText}>横图 · 可选</Text>
+                    </View>
+                  </Pressable>
                 </View>
-              </Pressable>
+                <Text style={styles.fieldHint}>方图用于列表；横图用于详情弹窗，未设置时沿用方图或图标</Text>
 
-              <View style={styles.imageActions}>
-                <Pressable style={styles.actionBtn} onPress={() => void pickImage('list')}>
-                  <FontAwesome name="image" size={16} color={colors.primary} />
-                  <Text style={styles.actionBtnText}>相册 · 方图</Text>
-                </Pressable>
-                <Pressable style={styles.actionBtn} onPress={() => void pickImage('detail')}>
-                  <FontAwesome name="picture-o" size={16} color={colors.primary} />
-                  <Text style={styles.actionBtnText}>相册 · 横图</Text>
-                </Pressable>
-                <Text style={styles.imageHint}>列表用正方形，详情弹窗优先显示横图</Text>
-              </View>
-            </View>
-
-            <Text style={styles.sectionLabel}>预设图标</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.emojiRow}>
-              {PRESET_FAMILY_EMOJIS.map((emoji) => {
-                const selected = draft.imageSource === 'emoji' && draft.emoji === emoji;
-                return (
-                  <Pressable
-                    key={emoji}
-                    style={[styles.emojiChip, selected && styles.emojiChipActive]}
-                    onPress={() => selectEmoji(emoji)}
-                  >
-                    <Text style={styles.emojiChipText}>{emoji}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={styles.sectionLabel}>称呼</Text>
-            <TextInput
-              style={styles.input}
-              value={draft.name}
-              onChangeText={(name) => {
-                setDraft((prev) => {
-                  if (!prev) return prev;
-                  return {
-                    ...prev,
-                    name,
-                    ttsText: ttsTextForName(name, prev.ttsText, prev.name),
-                  };
-                });
-              }}
-              placeholder="例如：爸爸、奶奶"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={styles.sectionLabel}>语音</Text>
-            <View style={styles.modeRow}>
-              {(['tts', 'recording'] as FamilyVoiceMode[]).map((mode) => {
-                const active = draft.voiceMode === mode;
-                return (
-                  <Pressable
-                    key={mode}
-                    style={[styles.modeChip, active && styles.modeChipActive]}
-                    onPress={() => updateDraft({ voiceMode: mode })}
-                  >
-                    <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
-                      {mode === 'tts' ? '文本生成' : '录制'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {draft.voiceMode === 'tts' ? (
-              <View style={styles.voiceBlock}>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={draft.ttsText}
-                  onChangeText={(ttsText) => updateDraft({ ttsText })}
-                  placeholder={createDefaultTtsText('爸爸')}
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                />
-                <Text style={styles.helperText}>
-                  默认：我是称呼，跟我叫称呼（随称呼自动填充，手动改过则不再覆盖）
-                </Text>
-                <Text style={styles.helperText}>空格表示停顿 0.2 秒，例如：我是 爸爸 跟我叫 爸爸</Text>
-
-                <Text style={styles.subLabel}>音色风格</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  {voicePresets.map((preset) => {
-                    const active =
-                      draft.voiceProfile.gender === preset.profile.gender &&
-                      draft.voiceProfile.age === preset.profile.age;
+                <Text style={styles.fieldLabel}>预设图标</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.emojiRow}
+                >
+                  {PRESET_FAMILY_EMOJIS.map((emoji) => {
+                    const selected = draft.imageSource === 'emoji' && draft.emoji === emoji;
                     return (
                       <Pressable
-                        key={preset.id}
-                        style={[styles.chip, active && styles.chipActive]}
-                        onPress={() =>
-                          updateDraft({
-                            voiceProfile: preset.profile,
-                            ttsVoiceId: undefined,
-                          })
-                        }
+                        key={emoji}
+                        style={[styles.emojiChip, selected && styles.emojiChipActive]}
+                        onPress={() => selectEmoji(emoji)}
                       >
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                          {preset.label}
-                        </Text>
+                        <Text style={styles.emojiChipText}>{emoji}</Text>
                       </Pressable>
                     );
                   })}
                 </ScrollView>
+              </View>
+            </View>
 
-                {voiceOptions.length > 0 && (
-                  <>
-                    <Text style={styles.subLabel}>系统音色</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                      {voiceOptions.map((option) => {
-                        const active = draft.ttsVoiceId === option.id;
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>称呼</Text>
+              <View style={styles.sectionCard}>
+                <TextInput
+                  style={styles.input}
+                  value={draft.name}
+                  onChangeText={(name) => {
+                    setDraft((prev) => {
+                      if (!prev) return prev;
+                      return {
+                        ...prev,
+                        name,
+                        ttsText: ttsTextForName(name, prev.ttsText, prev.name),
+                      };
+                    });
+                  }}
+                  placeholder="例如：爸爸、奶奶"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>语音</Text>
+                <Pressable style={styles.inlinePreviewBtn} onPress={() => void previewVoice()}>
+                  <FontAwesome name="play" size={14} color={colors.primary} />
+                  <Text style={styles.inlinePreviewText}>试听</Text>
+                </Pressable>
+              </View>
+              <View style={styles.sectionCard}>
+                <View style={styles.modeRow}>
+                  {(['tts', 'recording'] as FamilyVoiceMode[]).map((mode) => {
+                    const active = draft.voiceMode === mode;
+                    return (
+                      <Pressable
+                        key={mode}
+                        style={[styles.modeChip, active && styles.modeChipActive]}
+                        onPress={() => updateDraft({ voiceMode: mode })}
+                      >
+                        <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
+                          {mode === 'tts' ? '文本生成' : '录制'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {draft.voiceMode === 'tts' ? (
+                  <View style={styles.voiceBlock}>
+                    <TextInput
+                      style={[styles.input, styles.textArea]}
+                      value={draft.ttsText}
+                      onChangeText={(ttsText) => updateDraft({ ttsText })}
+                      placeholder={createDefaultTtsText('爸爸')}
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                    />
+                    <Text style={styles.fieldHint}>
+                      默认随称呼自动填充；空格表示 0.2 秒停顿
+                    </Text>
+
+                    <Text style={styles.fieldLabel}>音色风格</Text>
+                    <View style={styles.chipGrid}>
+                      {voicePresets.map((preset) => {
+                        const active =
+                          draft.voiceProfile.gender === preset.profile.gender &&
+                          draft.voiceProfile.age === preset.profile.age;
                         return (
                           <Pressable
-                            key={option.id}
-                            style={[styles.chip, active && styles.chipActive]}
-                            onPress={() => updateDraft({ ttsVoiceId: option.id })}
+                            key={preset.id}
+                            style={[styles.chipGridItem, styles.chip, active && styles.chipActive]}
+                            onPress={() =>
+                              updateDraft({
+                                voiceProfile: preset.profile,
+                                ttsVoiceId: undefined,
+                              })
+                            }
                           >
                             <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                              {option.label}
+                              {preset.label}
                             </Text>
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
-                  </>
+                    </View>
+
+                    {showSystemVoices && (
+                      <>
+                        <Text style={styles.fieldLabel}>指定发音人</Text>
+                        <View style={styles.chipGrid}>
+                          {voiceOptions.map((option) => {
+                            const active = draft.ttsVoiceId === option.id;
+                            return (
+                              <Pressable
+                                key={option.id}
+                                style={[styles.chipGridItemWide, styles.chip, active && styles.chipActive]}
+                                onPress={() => updateDraft({ ttsVoiceId: option.id })}
+                              >
+                                <Text
+                                  style={[styles.chipText, active && styles.chipTextActive]}
+                                  numberOfLines={1}
+                                >
+                                  {option.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.voiceBlock}>
+                    <Text style={styles.fieldHint}>
+                      {recorderState.isRecording
+                        ? `录音中 ${Math.max(1, Math.round(recorderState.durationMillis / 1000))} 秒`
+                        : recordingUri
+                          ? '已保存，可试听、重录或删除'
+                          : '录一段招呼语音，保存后可直接播放'}
+                    </Text>
+                    <View style={styles.recordRow}>
+                      {!recorderState.isRecording ? (
+                        <Pressable style={styles.primaryBtn} onPress={() => void startRecording()}>
+                          <FontAwesome name="microphone" size={18} color="#fff" />
+                          <Text style={styles.primaryBtnText}>{recordingUri ? '重录' : '开始录音'}</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable style={styles.dangerBtn} onPress={() => void stopRecording()}>
+                          <FontAwesome name="stop" size={18} color="#fff" />
+                          <Text style={styles.primaryBtnText}>停止并保存</Text>
+                        </Pressable>
+                      )}
+                      {recordingUri && !recorderState.isRecording && (
+                        <Pressable style={styles.secondaryBtn} onPress={() => void removeRecording()}>
+                          <FontAwesome name="trash-o" size={16} color={colors.primary} />
+                          <Text style={styles.secondaryBtnText}>删除</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
                 )}
               </View>
-            ) : (
-              <View style={styles.voiceBlock}>
-                <Text style={styles.helperText}>
-                  {recorderState.isRecording
-                    ? `录音中 ${Math.max(1, Math.round(recorderState.durationMillis / 1000))} 秒`
-                    : recordingUri
-                      ? '已保存录音，可预览、重录或删除'
-                      : '点击开始录制一段招呼语音'}
-                </Text>
-                <View style={styles.recordRow}>
-                  {!recorderState.isRecording ? (
-                    <Pressable style={styles.primaryBtn} onPress={() => void startRecording()}>
-                      <FontAwesome name="microphone" size={18} color="#fff" />
-                      <Text style={styles.primaryBtnText}>{recordingUri ? '重录' : '开始录音'}</Text>
-                    </Pressable>
-                  ) : (
-                    <Pressable style={styles.dangerBtn} onPress={() => void stopRecording()}>
-                      <FontAwesome name="stop" size={18} color="#fff" />
-                      <Text style={styles.primaryBtnText}>停止并保存</Text>
-                    </Pressable>
-                  )}
-                  {recordingUri && !recorderState.isRecording && (
-                    <Pressable style={styles.secondaryBtn} onPress={() => void removeRecording()}>
-                      <FontAwesome name="trash-o" size={16} color={colors.primary} />
-                      <Text style={styles.secondaryBtnText}>删除</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-            )}
-
-            <Pressable style={styles.previewBtn} onPress={() => void previewVoice()}>
-              <FontAwesome name="play" size={16} color={colors.primary} />
-              <Text style={styles.previewBtnText}>预览语音</Text>
-            </Pressable>
+            </View>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -485,30 +531,69 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   content: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 16,
   },
-  sectionLabel: {
-    marginTop: 18,
-    marginBottom: 10,
-    fontSize: 16,
+  section: {
+    marginTop: 16,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sectionTitleInline: {
+    marginBottom: 0,
+  },
+  sectionTitle: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#333',
-  },
-  subLabel: {
-    marginTop: 12,
     marginBottom: 8,
-    fontSize: 14,
+  },
+  sectionCard: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  fieldLabel: {
+    marginTop: 14,
+    marginBottom: 8,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
   },
-  imageRow: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'center',
+  fieldHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
-  imagePreview: {
-    borderRadius: 18,
+  inlinePreviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#FFF4F0',
+  },
+  inlinePreviewText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  listPreview: {
+    borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#FFF8F0',
     alignItems: 'center',
@@ -521,42 +606,44 @@ const styles = StyleSheet.create({
   emojiPreview: {
     textAlign: 'center',
   },
-  imageBadge: {
+  previewTag: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingVertical: 4,
-    alignItems: 'center',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  imageBadgeText: {
+  previewTagText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
-  imageActions: {
-    flex: 1,
-    gap: 8,
-  },
-  actionBtn: {
-    flexDirection: 'row',
+  detailPreview: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#111',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFF4F0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    justifyContent: 'center',
   },
-  actionBtnText: {
-    color: colors.primary,
-    fontWeight: '600',
-    fontSize: 14,
+  detailImageFill: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#111',
   },
-  imageHint: {
+  detailPlaceholder: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#FFF8F0',
+  },
+  detailPlaceholderText: {
     fontSize: 12,
+    fontWeight: '600',
     color: colors.textMuted,
-    lineHeight: 18,
   },
   emojiRow: {
     gap: 8,
@@ -590,14 +677,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   textArea: {
-    minHeight: 88,
+    minHeight: 80,
     textAlignVertical: 'top',
-  },
-  helperText: {
-    marginTop: 8,
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 20,
   },
   modeRow: {
     flexDirection: 'row',
@@ -623,15 +704,26 @@ const styles = StyleSheet.create({
   voiceBlock: {
     marginTop: 12,
   },
-  chipRow: {
+  chipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
-    paddingBottom: 4,
+  },
+  chipGridItem: {
+    width: '31%',
+    alignItems: 'center',
+  },
+  chipGridItemWide: {
+    minWidth: '47%',
+    flexGrow: 1,
+    alignItems: 'center',
   },
   chip: {
+    width: '100%',
     borderRadius: 999,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F0F0F0',
   },
   chipActive: {
     backgroundColor: colors.primaryLight,
@@ -639,7 +731,8 @@ const styles = StyleSheet.create({
   chipText: {
     color: '#666',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
+    textAlign: 'center',
   },
   chipTextActive: {
     color: '#fff',
@@ -684,21 +777,6 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: colors.primary,
     fontWeight: '700',
-  },
-  previewBtn: {
-    marginTop: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    paddingVertical: 12,
-    backgroundColor: '#FFF4F0',
-  },
-  previewBtnText: {
-    color: colors.primary,
-    fontWeight: '700',
-    fontSize: 15,
   },
   footer: {
     flexDirection: 'row',

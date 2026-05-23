@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const STORAGE_KEY = 'family-custom-images-v2';
+const LEGACY_STORAGE_KEY = 'family-custom-images';
 
 export type FamilyImageVariant = 'list' | 'detail';
 
@@ -47,7 +48,15 @@ async function loadMap(): Promise<ImageMap> {
     loadPromise = (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        cache = raw ? (JSON.parse(raw) as ImageMap) : {};
+        if (raw) {
+          cache = JSON.parse(raw) as ImageMap;
+        } else {
+          const legacyRaw = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+          cache = legacyRaw ? (JSON.parse(legacyRaw) as ImageMap) : {};
+          if (legacyRaw && Object.keys(cache).length > 0) {
+            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+          }
+        }
       } catch {
         cache = {};
       }

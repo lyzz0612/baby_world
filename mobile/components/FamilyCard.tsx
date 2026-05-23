@@ -12,6 +12,7 @@ type Props = {
   isActive?: boolean;
   onPress: () => void;
   onSelectPress?: () => void;
+  disabled?: boolean;
   size?: FamilyCardSize;
   imageSize?: number;
 };
@@ -47,9 +48,10 @@ export function FamilyAddCard({
   imageSize,
   label = '添加关系',
 }: AddCardProps) {
-  const mediaStyle = imageSize
-    ? { width: imageSize, height: imageSize }
-    : styles.mediaSquare;
+  const mediaStyle =
+    imageSize && imageSize > 0
+      ? { width: imageSize, height: imageSize }
+      : styles.mediaSquare;
 
   return (
     <Pressable
@@ -78,12 +80,14 @@ export function FamilyCard({
   isActive = false,
   onPress,
   onSelectPress,
+  disabled = false,
   size = 'phone',
   imageSize,
 }: Props) {
-  const mediaStyle = imageSize
-    ? { width: imageSize, height: imageSize }
-    : styles.mediaSquare;
+  const mediaStyle =
+    imageSize && imageSize > 0
+      ? { width: imageSize, height: imageSize }
+      : styles.mediaSquare;
 
   const emojiSize = imageSize
     ? Math.round(imageSize * EMOJI_SIZE[size])
@@ -93,7 +97,7 @@ export function FamilyCard({
         ? 56
         : 48;
 
-  const showPhoto = relation.imageSource === 'photo' && imageUri;
+  const showPhoto = Boolean(imageUri);
 
   return (
     <View
@@ -109,6 +113,7 @@ export function FamilyCard({
           style={[styles.selectBadge, selected && styles.selectBadgeActive]}
           onPress={onSelectPress}
           hitSlop={8}
+          disabled={disabled}
           accessibilityLabel={`${selected ? '取消选中' : '选中'}${relation.name}`}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: selected }}
@@ -118,14 +123,20 @@ export function FamilyCard({
       )}
 
       <Pressable
-        style={({ pressed }) => [styles.cardBody, pressed && styles.cardPressed]}
+        style={({ pressed }) => [styles.cardBody, pressed && !disabled && styles.cardPressed]}
         onPress={onPress}
+        disabled={disabled}
         accessibilityLabel={editMode ? `编辑${relation.name}` : relation.name}
         accessibilityRole="button"
       >
         <View style={[styles.mediaArea, mediaStyle]}>
-          {showPhoto ? (
-            <Image key={imageUri} source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />
+          {showPhoto && imageUri ? (
+            <Image
+              key={`${relation.id}:${editMode ? 'edit' : 'view'}`}
+              source={{ uri: imageUri }}
+              style={styles.photo}
+              resizeMode="cover"
+            />
           ) : (
             <View style={styles.emojiWrap}>
               <Text style={[styles.emoji, { fontSize: emojiSize }]}>{relation.emoji}</Text>
