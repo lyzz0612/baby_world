@@ -12,10 +12,22 @@ type Props = {
   size?: AnimalCardSize;
 };
 
-const SIZE_STYLES = {
-  phone: { emoji: 56, image: 72, name: 18, padV: 16, margin: 6 },
-  tablet: { emoji: 72, image: 92, name: 22, padV: 18, margin: 8 },
-  large: { emoji: 96, image: 120, name: 28, padV: 22, margin: 10 },
+const NAME_HEIGHT = {
+  phone: 28,
+  tablet: 32,
+  large: 38,
+} as const;
+
+const NAME_SIZE = {
+  phone: 17,
+  tablet: 20,
+  large: 24,
+} as const;
+
+const EMOJI_SIZE = {
+  phone: 48,
+  tablet: 60,
+  large: 72,
 } as const;
 
 export function FamilyCard({
@@ -26,16 +38,10 @@ export function FamilyCard({
   onPress,
   size = 'phone',
 }: Props) {
-  const sz = SIZE_STYLES[size];
-
   return (
     <Pressable
       style={({ pressed }) => [
         styles.card,
-        {
-          paddingVertical: sz.padV,
-          margin: sz.margin,
-        },
         isActive && styles.cardActive,
         editMode && styles.cardEdit,
         pressed && styles.cardPressed,
@@ -44,13 +50,13 @@ export function FamilyCard({
       accessibilityLabel={editMode ? `更换${title.name}的照片` : title.name}
       accessibilityRole="button"
     >
-      <View style={[styles.mediaWrap, { width: sz.image, height: sz.image }]}>
+      <View style={styles.mediaArea}>
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />
         ) : (
-          <Text style={[styles.emoji, { fontSize: sz.emoji, lineHeight: sz.emoji + 8 }]}>
-            {title.emoji}
-          </Text>
+          <View style={styles.emojiWrap}>
+            <Text style={[styles.emoji, { fontSize: EMOJI_SIZE[size] }]}>{title.emoji}</Text>
+          </View>
         )}
         {editMode && (
           <View style={styles.editBadge}>
@@ -58,26 +64,37 @@ export function FamilyCard({
           </View>
         )}
       </View>
-      <Text style={[styles.name, { fontSize: sz.name }, isActive && styles.nameActive]}>
-        {title.name}
-      </Text>
+
+      <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
+        <Text
+          style={[
+            styles.name,
+            { fontSize: NAME_SIZE[size] },
+            isActive && styles.nameActive,
+          ]}
+          numberOfLines={1}
+        >
+          {title.name}
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 20,
+    paddingTop: 8,
     paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingBottom: 6,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 4,
-    flex: 1,
   },
   cardActive: {
     backgroundColor: colors.primaryLight,
@@ -93,25 +110,31 @@ const styles = StyleSheet.create({
   cardPressed: {
     transform: [{ scale: 0.98 }],
   },
-  mediaWrap: {
-    borderRadius: 18,
+  mediaArea: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#FFF8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   photo: {
     width: '100%',
     height: '100%',
+  },
+  emojiWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emoji: {
     textAlign: 'center',
   },
   editBadge: {
     position: 'absolute',
-    right: 4,
-    bottom: 4,
+    right: 6,
+    bottom: 6,
     backgroundColor: colors.primary,
     borderRadius: 8,
     paddingHorizontal: 6,
@@ -122,9 +145,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  nameBar: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   name: {
     fontWeight: '700',
     color: '#333',
+    textAlign: 'center',
   },
   nameActive: {
     color: '#fff',

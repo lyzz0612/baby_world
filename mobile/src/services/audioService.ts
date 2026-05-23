@@ -7,6 +7,12 @@ import {
 } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import type { Animal } from '@/src/data/animals';
+import type { FamilyTitle } from '@/src/data/familyTitles';
+import { getFamilyCallIntro } from '@/src/data/familyTitles';
+import {
+  getFamilySpeechOptions,
+  resolveFamilySpeechVoice,
+} from '@/src/services/familyVoice';
 import { getSoundSource, getTtsSource } from '@/src/data/soundAssets';
 
 /**
@@ -188,7 +194,7 @@ async function playSource(source: PlayableSource, token: number): Promise<boolea
   });
 }
 
-async function speakFallback(text: string, token: number): Promise<void> {
+async function speakFallback(text: string, token: number, options: Speech.SpeechOptions = {}): Promise<void> {
   if (!alive(token)) return;
 
   await new Promise<void>((resolve) => {
@@ -197,6 +203,7 @@ async function speakFallback(text: string, token: number): Promise<void> {
         language: 'zh-CN',
         rate: 0.9,
         pitch: 1.4,
+        ...options,
         onDone: () => resolve(),
         onStopped: () => resolve(),
         onError: () => resolve(),
@@ -299,6 +306,36 @@ export const audioService = {
     await ensureAudioMode();
     if (!alive(token)) return;
     await speakFallback(text, token);
+  },
+
+  async speakFamilyCall(title: FamilyTitle): Promise<void> {
+    const token = ++currentToken;
+    await ensureAudioMode();
+    if (!alive(token)) return;
+
+    const base = getFamilySpeechOptions(title);
+    const voiceName = await resolveFamilySpeechVoice(title);
+    const speechOptions: Speech.SpeechOptions = {
+      ...base,
+      ...(voiceName ? { voice: voiceName } : {}),
+    };
+
+    await speakFallback(getFamilyCallIntro(title.name), token, speechOptions);
+    if (!alive(token)) return;
+
+    await wait(750);
+    if (!alive(token)) return;
+
+    const charRate = Math.max(0.75, (base.rate ?? 1) * 0.88);
+    for (const char of [...title.name]) {
+      if (!alive(token)) return;
+      await speakFallback(char, token, {
+        ...speechOptions,
+        rate: charRate,
+      });
+      if (!alive(token)) return;
+      await wait(420);
+    }
   },
 
   /** 供调试或设置页手动恢复音频 */

@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FamilyCard } from '@/components/FamilyCard';
 import { FamilyImageModal } from '@/components/FamilyImageModal';
 import { ScreenBackground } from '@/components/ScreenBackground';
-import { FAMILY_TITLES, getFamilyCallPhrase, type FamilyTitle } from '@/src/data/familyTitles';
+import { FAMILY_TITLES, type FamilyTitle } from '@/src/data/familyTitles';
 import { audioService } from '@/src/services/audioService';
 import { getFamilyImageMap, saveFamilyImage } from '@/src/services/familyImageStore';
 import { colors } from '@/src/theme/colors';
@@ -75,6 +75,21 @@ export default function FamilyScreen() {
     setActiveId(null);
   }, []);
 
+  const playFamilySpeech = useCallback(async (title: FamilyTitle) => {
+    const token = ++playTokenRef.current;
+    await audioService.stop();
+    if (playTokenRef.current !== token) return;
+
+    setActiveId(title.id);
+    try {
+      await audioService.speakFamilyCall(title);
+    } finally {
+      if (playTokenRef.current === token) {
+        setActiveId(null);
+      }
+    }
+  }, []);
+
   const pickAndSaveImage = useCallback(
     async (title: FamilyTitle) => {
       try {
@@ -109,23 +124,16 @@ export default function FamilyScreen() {
         return;
       }
 
-      const token = ++playTokenRef.current;
-      await audioService.stop();
-      if (playTokenRef.current !== token) return;
-
-      setActiveId(title.id);
       setModalTitle(title);
-
-      try {
-        await audioService.speakCallText(getFamilyCallPhrase(title.name));
-      } finally {
-        if (playTokenRef.current === token) {
-          setActiveId(null);
-        }
-      }
+      await playFamilySpeech(title);
     },
-    [editMode, pickAndSaveImage]
+    [editMode, pickAndSaveImage, playFamilySpeech]
   );
+
+  const replayModal = useCallback(async () => {
+    if (!modalTitle) return;
+    await playFamilySpeech(modalTitle);
+  }, [modalTitle, playFamilySpeech]);
 
   useEffect(() => {
     return () => {
@@ -292,7 +300,7 @@ export default function FamilyScreen() {
         <Text style={styles.hint}>
           {editMode
             ? '编辑完成后点右上角 ✓ 退出'
-            : `第 ${safePageIndex + 1} / ${totalPages} 页 · 点卡片看大图听叫声`}
+            : `第 ${safePageIndex + 1} / ${totalPages} 页 · 点卡片看大图`}
         </Text>
 
         <FamilyImageModal
@@ -300,6 +308,7 @@ export default function FamilyScreen() {
           title={modalTitle}
           imageUri={modalTitle ? imageMap[modalTitle.id] : null}
           onClose={closeModal}
+          onReplay={() => void replayModal()}
         />
       </SafeAreaView>
     </ScreenBackground>
