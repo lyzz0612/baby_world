@@ -6,6 +6,7 @@ import {
   Alert,
   LayoutChangeEvent,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -24,17 +25,19 @@ import { getFamilyGridLayout } from '@/src/utils/pagination';
 export default function FamilyScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
+  const [gridWidth, setGridWidth] = useState(0);
+  const [gridHeight, setGridHeight] = useState(0);
+
   const gridLayout = useMemo(
-    () => getFamilyGridLayout(width, height, FAMILY_TITLES.length),
-    [width, height]
+    () => getFamilyGridLayout(width, height, FAMILY_TITLES.length, gridWidth, gridHeight),
+    [width, height, gridWidth, gridHeight]
   );
-  const { numColumns, numRows, cardSize, gap } = gridLayout;
+  const { numColumns, cardSize, gap, imageSize } = gridLayout;
 
   const [editMode, setEditMode] = useState(false);
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState<FamilyTitle | null>(null);
-  const [gridHeight, setGridHeight] = useState(0);
 
   const playTokenRef = useRef(0);
 
@@ -144,12 +147,13 @@ export default function FamilyScreen() {
   };
 
   const onGridLayout = (e: LayoutChangeEvent) => {
-    const h = e.nativeEvent.layout.height;
+    const { width: w, height: h } = e.nativeEvent.layout;
+    if (w !== gridWidth) setGridWidth(w);
     if (h !== gridHeight) setGridHeight(h);
   };
 
-  const cellHeight =
-    gridHeight > 0 ? (gridHeight - gap * (numRows - 1)) / numRows : undefined;
+  const cellWidth =
+    gridWidth > 0 ? (gridWidth - gap * (numColumns - 1)) / numColumns : undefined;
 
   return (
     <ScreenBackground>
@@ -187,30 +191,33 @@ export default function FamilyScreen() {
         )}
 
         <View style={styles.gridWrap} onLayout={onGridLayout}>
-          <View style={[styles.grid, { margin: -(gap / 2) }]}>
-            {FAMILY_TITLES.map((title) => (
-              <View
-                key={title.id}
-                style={[
-                  styles.gridItem,
-                  {
-                    width: `${100 / numColumns}%`,
-                    height: cellHeight ?? `${100 / numRows}%`,
-                    padding: gap / 2,
-                  },
-                ]}
-              >
-                <FamilyCard
-                  title={title}
-                  imageUri={imageMap[title.id]}
-                  editMode={editMode}
-                  isActive={activeId === title.id}
-                  size={cardSize}
-                  onPress={() => void openTitle(title)}
-                />
-              </View>
-            ))}
-          </View>
+          <ScrollView
+            contentContainerStyle={styles.gridScroll}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={[styles.grid, { gap, rowGap: gap }]}>
+              {FAMILY_TITLES.map((title) => (
+                <View
+                  key={title.id}
+                  style={[
+                    styles.gridItem,
+                    cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
+                  ]}
+                >
+                  <FamilyCard
+                    title={title}
+                    imageUri={imageMap[title.id]}
+                    editMode={editMode}
+                    isActive={activeId === title.id}
+                    size={cardSize}
+                    imageSize={imageSize}
+                    onPress={() => void openTitle(title)}
+                  />
+                </View>
+              ))}
+            </View>
+          </ScrollView>
         </View>
 
         <Text style={styles.hint}>
@@ -291,14 +298,17 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
+  gridScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   grid: {
-    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignContent: 'flex-start',
+    justifyContent: 'center',
   },
   gridItem: {
-    minHeight: 0,
+    alignItems: 'center',
   },
   hint: {
     textAlign: 'center',

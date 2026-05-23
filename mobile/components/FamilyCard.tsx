@@ -10,6 +10,7 @@ type Props = {
   isActive?: boolean;
   onPress: () => void;
   size?: FamilyCardSize;
+  imageSize?: number;
 };
 
 const NAME_HEIGHT = {
@@ -25,9 +26,9 @@ const NAME_SIZE = {
 } as const;
 
 const EMOJI_SIZE = {
-  phone: 64,
-  tablet: 80,
-  large: 96,
+  phone: 0.62,
+  tablet: 0.64,
+  large: 0.66,
 } as const;
 
 export function FamilyCard({
@@ -37,7 +38,20 @@ export function FamilyCard({
   isActive = false,
   onPress,
   size = 'phone',
+  imageSize,
 }: Props) {
+  const mediaStyle = imageSize
+    ? { width: imageSize, height: imageSize }
+    : styles.mediaSquare;
+
+  const emojiSize = imageSize
+    ? Math.round(imageSize * EMOJI_SIZE[size])
+    : size === 'large'
+      ? 72
+      : size === 'tablet'
+        ? 56
+        : 48;
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -50,7 +64,7 @@ export function FamilyCard({
       accessibilityLabel={editMode ? `更换${title.name}的照片` : title.name}
       accessibilityRole="button"
     >
-      <View style={styles.mediaArea}>
+      <View style={[styles.mediaArea, mediaStyle]}>
         {imageUri ? (
           <Image
             key={imageUri}
@@ -60,7 +74,7 @@ export function FamilyCard({
           />
         ) : (
           <View style={styles.emojiWrap}>
-            <Text style={[styles.emoji, { fontSize: EMOJI_SIZE[size] }]}>{title.emoji}</Text>
+            <Text style={[styles.emoji, { fontSize: emojiSize }]}>{title.emoji}</Text>
           </View>
         )}
         {editMode && (
@@ -88,7 +102,7 @@ export function FamilyCard({
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
+    alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 22,
     paddingTop: 10,
@@ -116,13 +130,14 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   mediaArea: {
-    flex: 1,
-    width: '100%',
-    minHeight: 0,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFF8F0',
     marginBottom: 8,
+  },
+  mediaSquare: {
+    width: '100%',
+    aspectRatio: 1,
   },
   photo: {
     width: '100%',
