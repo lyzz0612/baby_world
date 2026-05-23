@@ -82,6 +82,7 @@ export type FamilyGridLayout = {
   numRows: number;
   cardSize: FamilyCardSize;
   gap: number;
+  rowGap: number;
 };
 
 const FAMILY_NAME_HEIGHT = { phone: 34, tablet: 38, large: 44 } as const;
@@ -93,7 +94,7 @@ function familyCardSizeForImage(imageSize: number): FamilyCardSize {
   return 'phone';
 }
 
-/** 称呼页：单页展示全部项，优先正方形大图，减少误触 */
+/** 称呼页：单页展示全部项，正方形大图 + 大间距防误触 */
 export function getFamilyGridLayout(
   screenWidth: number,
   _screenHeight: number,
@@ -102,19 +103,21 @@ export function getFamilyGridLayout(
   gridHeight?: number
 ): FamilyGridLayout & { imageSize?: number } {
   const gapPresets = [
-    { minWidth: 900, gap: 20 },
-    { minWidth: 480, gap: 16 },
-    { minWidth: 0, gap: 12 },
+    { minWidth: 900, gap: 40, rowGap: 48 },
+    { minWidth: 480, gap: 30, rowGap: 38 },
+    { minWidth: 0, gap: 22, rowGap: 28 },
   ];
-  const gap = gapPresets.find((p) => screenWidth >= p.minWidth)?.gap ?? 12;
+  const preset = gapPresets.find((p) => screenWidth >= p.minWidth) ?? gapPresets[gapPresets.length - 1];
+  const { gap, rowGap } = preset;
 
   if (!gridWidth || !gridHeight || gridWidth <= 0 || gridHeight <= 0) {
-    const fallbackCols = screenWidth >= 900 ? 5 : screenWidth >= 480 ? 4 : 2;
+    const fallbackCols = screenWidth >= 900 ? 4 : screenWidth >= 480 ? 3 : 2;
     return {
       numColumns: fallbackCols,
       numRows: Math.ceil(itemCount / fallbackCols),
       cardSize: screenWidth >= 900 ? 'large' : screenWidth >= 480 ? 'tablet' : 'phone',
       gap,
+      rowGap,
     };
   }
 
@@ -123,19 +126,22 @@ export function getFamilyGridLayout(
     numRows: Math.ceil(itemCount / 2),
     cardSize: 'phone' as FamilyCardSize,
     gap,
+    rowGap,
     imageSize: 0,
   };
 
-  for (let cols = 2; cols <= 7; cols++) {
+  const maxColumns = screenWidth >= 900 ? 5 : screenWidth >= 480 ? 4 : 2;
+
+  for (let cols = 2; cols <= maxColumns; cols++) {
     const rows = Math.ceil(itemCount / cols);
     const cellW = (gridWidth - gap * (cols - 1)) / cols;
-    const cellH = (gridHeight - gap * (rows - 1)) / rows;
+    const cellH = (gridHeight - rowGap * (rows - 1)) / rows;
 
     for (const size of ['phone', 'tablet', 'large'] as const) {
       const nameH = FAMILY_NAME_HEIGHT[size];
       const pad = FAMILY_CARD_PADDING[size];
       const maxImage = Math.min(cellW - pad, cellH - nameH - pad);
-      if (maxImage < 56) continue;
+      if (maxImage < 52) continue;
 
       const squareImage = Math.floor(maxImage);
       if (squareImage > best.imageSize) {
@@ -144,6 +150,7 @@ export function getFamilyGridLayout(
           numRows: rows,
           cardSize: familyCardSizeForImage(squareImage),
           gap,
+          rowGap,
           imageSize: squareImage,
         };
       }

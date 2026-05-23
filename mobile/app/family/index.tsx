@@ -32,7 +32,7 @@ export default function FamilyScreen() {
     () => getFamilyGridLayout(width, height, FAMILY_TITLES.length, gridWidth, gridHeight),
     [width, height, gridWidth, gridHeight]
   );
-  const { numColumns, cardSize, gap, imageSize } = gridLayout;
+  const { numColumns, cardSize, gap, rowGap, imageSize } = gridLayout;
 
   const [editMode, setEditMode] = useState(false);
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
@@ -196,7 +196,7 @@ export default function FamilyScreen() {
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <View style={[styles.grid, { gap, rowGap: gap }]}>
+            <View style={[styles.grid, { gap, rowGap }]}>
               {FAMILY_TITLES.map((title) => (
                 <View
                   key={title.id}
@@ -239,7 +239,7 @@ export default function FamilyScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingBottom: 12,
   },
   header: {
