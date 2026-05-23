@@ -77,9 +77,6 @@ export default function FamilyScreen() {
 
   const playFamilySpeech = useCallback(async (title: FamilyTitle) => {
     const token = ++playTokenRef.current;
-    await audioService.stop();
-    if (playTokenRef.current !== token) return;
-
     setActiveId(title.id);
     try {
       await audioService.speakFamilyCall(title);

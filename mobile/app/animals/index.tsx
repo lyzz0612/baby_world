@@ -78,8 +78,6 @@ export default function AnimalsScreen() {
     async (animal: Animal) => {
       const token = ++playTokenRef.current;
       recordAnimalClick(animal.id);
-      await audioService.stop();
-      if (playTokenRef.current !== token) return;
       setPlayingId(animal.id);
       try {
         await audioService.playAnimalSound(animal);
