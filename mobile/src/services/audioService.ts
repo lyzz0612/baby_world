@@ -11,8 +11,8 @@ import type { FamilyTitle } from '@/src/data/familyTitles';
 import { getFamilyCallIntro } from '@/src/data/familyTitles';
 import { getSoundSource, getTtsSource } from '@/src/data/soundAssets';
 import {
-  getFamilySpeechOptions,
-  resolveFamilySpeechVoice,
+  FAMILY_CALL_PAUSE_MS,
+  resolveFamilySpeechProfile,
 } from '@/src/services/familyVoice';
 
 /**
@@ -315,29 +315,19 @@ export const audioService = {
     await ensureAudioMode();
     if (!alive(token)) return;
 
-    const base = getFamilySpeechOptions(title);
-    const voiceName = await resolveFamilySpeechVoice(title);
-    const speechOptions: Speech.SpeechOptions = {
-      ...base,
-      ...(voiceName ? { voice: voiceName } : {}),
-    };
+    const { voice, intro, name } = await resolveFamilySpeechProfile(title);
+    const withVoice = (options: Speech.SpeechOptions): Speech.SpeechOptions => ({
+      ...options,
+      ...(voice ? { voice } : {}),
+    });
 
-    await speakFallback(getFamilyCallIntro(title.name), token, speechOptions);
+    await speakFallback(getFamilyCallIntro(title.name), token, withVoice(intro));
     if (!alive(token)) return;
 
-    await wait(750);
+    await wait(FAMILY_CALL_PAUSE_MS);
     if (!alive(token)) return;
 
-    const charRate = Math.max(0.75, (base.rate ?? 1) * 0.88);
-    for (const char of [...title.name]) {
-      if (!alive(token)) return;
-      await speakFallback(char, token, {
-        ...speechOptions,
-        rate: charRate,
-      });
-      if (!alive(token)) return;
-      await wait(420);
-    }
+    await speakFallback(title.name, token, withVoice(name));
   },
 
   async recover(): Promise<void> {
