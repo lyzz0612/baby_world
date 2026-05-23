@@ -1,0 +1,37 @@
+---
+description: 构建与发布验证走 GitHub Actions，不在本地跑
+alwaysApply: true
+---
+
+# CI 验证优先
+
+本项目的 **构建、打包、发布验证** 一律通过 GitHub Actions 完成，**不要在本地执行**。
+
+## 禁止本地执行的验证
+
+- `./gradlew assembleRelease` / `assembleDebug`
+- `npx expo prebuild --platform android`（仅为验证构建）
+- `npm run android` / `expo run:android`（仅为验证 release 能否编过）
+- 本地安装 JDK / Android SDK 专门为了跑 CI 同款构建
+- 长时间阻塞等待本地 Gradle 首次下载 NDK
+
+## 应使用的验证方式
+
+1. 改完代码 **commit + push** 到 `master`（不会自动打 release 包）
+2. 需要出包时：手动触发 **Release Baby World App to R2**，或 push tag `v*`
+3. 用 `gh run list` / `gh run watch` / Actions 页面查看结果
+4. 首包或指定版本：`version_name` 填如 `1.0.0`
+
+Workflow：`.github/workflows/mobile-release.yml`  
+加速说明：`docs/CI-SPEEDUP.md`
+
+## 本地仍允许
+
+- `npm start` / `npm run web`：日常 UI 开发
+- 读代码、改 TS/TSX、小范围 lint
+- 修改 CI 脚本后，**触发 Action 验证**，不要本地 prebuild + gradle 复现
+
+## 修复 CI 失败时
+
+- 根据 **Actions 日志** 定位问题并改代码/脚本
+- 修完后 re-run workflow 或 push tag，**不要**在本地重跑 Gradle 做最终确认

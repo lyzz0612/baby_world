@@ -46,7 +46,7 @@ npm run web                # 仅供 UI 调试，不能验证音频/OTA
 
 ## 应用内自动更新（OTA）
 
-每次 push 到 `master`、推 tag `v*`、或手动 `workflow_dispatch`，CI 会：
+每次推 tag `v*`、或手动 `workflow_dispatch`，CI 会：
 
 1. 从 R2 `latest.json` 算下一版本号（默认 `PATCH + 1`）
 2. `npx expo prebuild --platform android` 生成 native 工程（不入仓）

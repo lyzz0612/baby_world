@@ -2,7 +2,7 @@
 
 ## 总体流程
 
-每次向 `master` push（或推 tag `v*`、手动 `workflow_dispatch`）会触发 `.github/workflows/mobile-release.yml`：
+每次推 tag `v*`、或手动 `workflow_dispatch` 会触发 `.github/workflows/mobile-release.yml`：
 
 ```
 checkout
@@ -87,9 +87,10 @@ CI 解码后写入 `RUNNER_TEMP/release.keystore`，并通过 `ANDROID_KEYSTORE_
 
 | 触发 | versionName 来源 |
 |------|------------------|
-| `push` 到 `master` | 读 R2 上 `latest.json.versionName`，`PATCH + 1` |
-| tag `v1.2.0` | 去掉 `v` 前缀 → `1.2.0` |
+| 推 tag `v1.2.0` | 去掉 `v` 前缀 → `1.2.0` |
 | `workflow_dispatch` | 必填的 `version_name` 输入 |
+
+> 日常 push 到 `master` **不会**触发 release（见 `docs/CI-SPEEDUP.md`）。首包 baseline 后，小版本可用 dispatch（脚本会读 R2 上版本并 PATCH+1），或 push tag 升 MINOR/MAJOR。
 
 `PATCH` 必须 `< 9999`，`MINOR` 必须 `< 99`；超过需要换成 tag 或手动 dispatch 升 MINOR/MAJOR。
 
@@ -98,13 +99,13 @@ CI 解码后写入 `RUNNER_TEMP/release.keystore`，并通过 `ANDROID_KEYSTORE_
 1. 配置好 R2 + 全部 Secrets。
 2. Actions 跑 **Release Baby World App to R2** → `workflow_dispatch`，`version_name` 填 `1.0.0`。
 3. 把 Workflow 产物里的 release APK 手动安装到设备（首包 baseline）。
-4. 之后向 `master` push 自动 patch+1；要升 MINOR/MAJOR 走 tag `v1.1.0` 或再次 dispatch。
+4. 之后用 `workflow_dispatch`（填下一版 versionName）或 push tag 发版。
 
 ## 验证清单
 
 ### 5.1 分支 push → R2
 
-- [ ] push `master`，确认 `update/latest.json` 的 `PATCH` +1，且 `update/app-release.apk` 可经 HTTPS 下载
+- [ ] 手动 dispatch 或 push tag，确认 `update/latest.json` 更新且 `update/app-release.apk` 可经 HTTPS 下载
 - [ ] 安装新 APK，启动后无 OTA 弹窗（远端版本与本地相同）
 
 ### 5.2 Tag 发布
