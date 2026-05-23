@@ -36,6 +36,13 @@ const APP_MODULES: AppModule[] = [
     route: '/animals',
   },
   {
+    id: 'family',
+    title: '称呼叫声',
+    icon: '👨‍👩‍👧',
+    color: '#FFD6A5',
+    route: '/family',
+  },
+  {
     id: 'more',
     title: '更多功能',
     icon: '🚀',
@@ -105,7 +112,7 @@ export default function HomeScreen() {
 
   const handleModulePress = (module: AppModule) => {
     if (module.disabled || !module.route) return;
-    router.push(module.route as '/animals');
+    router.push(module.route as '/animals' | '/family');
   };
 
   return (

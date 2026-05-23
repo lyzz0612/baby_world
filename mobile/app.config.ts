@@ -49,6 +49,7 @@ const config: ExpoConfig = {
     permissions: [
       'android.permission.INTERNET',
       'android.permission.REQUEST_INSTALL_PACKAGES',
+      'android.permission.READ_MEDIA_IMAGES',
     ],
   },
   web: {
@@ -56,7 +57,16 @@ const config: ExpoConfig = {
     output: 'static',
     favicon: './assets/images/favicon.png',
   },
-  plugins: ['expo-router', 'expo-audio'],
+  plugins: [
+    'expo-router',
+    'expo-audio',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: '允许访问相册，以便为称呼更换本地照片',
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },

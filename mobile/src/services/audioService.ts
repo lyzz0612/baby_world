@@ -1,6 +1,7 @@
 import {
   createAudioPlayer,
   setAudioModeAsync,
+  setIsAudioActiveAsync,
   type AudioPlayer,
   type AudioStatus,
 } from 'expo-audio';
@@ -11,92 +12,180 @@ import { getSoundSource, getTtsSource } from '@/src/data/soundAssets';
 /**
  * 播放状态管理：
  * - `currentToken`：每次 `playAnimalSound` 或 `stop()` 都自增；旧序列检测到 token 失效后退出
- * - `currentPlayer`：当前在播的 AudioPlayer，仅供 stop 时定位
+ * - `sharedPlayer`：全局复用一个 AudioPlayer，避免频繁 create/remove 导致 Android 音频资源耗尽
  * - `cancelCurrent`：在飞的 playSource 的 finish(false) 回调；stop() 立即解开
  */
 let currentToken = 0;
-let currentPlayer: AudioPlayer | null = null;
+let sharedPlayer: AudioPlayer | null = null;
+let sharedListener: { remove: () => void } | null = null;
 let cancelCurrent: (() => void) | null = null;
+let abortWait: (() => void) | null = null;
+let consecutiveFailures = 0;
+
+let playerLock: Promise<void> = Promise.resolve();
 
 const alive = (token: number) => token === currentToken;
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    const id = setTimeout(() => {
+      abortWait = null;
+      resolve();
+    }, ms);
+    abortWait = () => {
+      clearTimeout(id);
+      abortWait = null;
+      resolve();
+    };
+  });
 
-function safeRemove(player: AudioPlayer | null) {
-  if (!player) return;
+function withPlayerLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = playerLock.then(fn, fn);
+  playerLock = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+function detachSharedListener() {
   try {
-    player.pause();
+    sharedListener?.remove();
+  } catch {
+    /* noop */
+  }
+  sharedListener = null;
+}
+
+function disposeSharedPlayer() {
+  detachSharedListener();
+  if (!sharedPlayer) return;
+  try {
+    sharedPlayer.pause();
   } catch {
     /* noop */
   }
   try {
-    player.remove();
+    sharedPlayer.remove();
   } catch {
     /* noop */
   }
+  sharedPlayer = null;
+}
+
+function ensureSharedPlayer(): AudioPlayer {
+  if (!sharedPlayer) {
+    sharedPlayer = createAudioPlayer(null, {
+      updateInterval: 120,
+      keepAudioSessionActive: true,
+    });
+  }
+  return sharedPlayer;
 }
 
 type PlayableSource = Parameters<typeof createAudioPlayer>[0];
 
+async function waitUntilLoaded(
+  player: AudioPlayer,
+  token: number,
+  timeoutMs = 5000
+): Promise<boolean> {
+  if (player.isLoaded) return alive(token);
+
+  return new Promise<boolean>((resolve) => {
+    let sub: { remove: () => void } | null = null;
+    const timer = setTimeout(() => {
+      sub?.remove();
+      resolve(false);
+    }, timeoutMs);
+
+    sub = player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+      if (!status.isLoaded || status.isBuffering) return;
+      clearTimeout(timer);
+      sub?.remove();
+      resolve(alive(token));
+    });
+  });
+}
+
 async function playSource(source: PlayableSource, token: number): Promise<boolean> {
   if (!alive(token)) return false;
 
-  let player: AudioPlayer | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return withPlayerLock(async () => {
+    if (!alive(token)) return false;
 
-  try {
-    player = createAudioPlayer(source);
-    if (!alive(token)) {
-      safeRemove(player);
-      return false;
-    }
-    currentPlayer = player;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const ok = await new Promise<boolean>((resolve) => {
-      let settled = false;
-
-      const finish = (success: boolean) => {
-        if (settled) return;
-        settled = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        try {
-          sub.remove();
-        } catch {
-          /* noop */
-        }
-        if (cancelCurrent === cancelHandle) cancelCurrent = null;
-        resolve(success);
-      };
-
-      const cancelHandle = () => finish(false);
-      cancelCurrent = cancelHandle;
-
-      const sub = player!.addListener('playbackStatusUpdate', (status: AudioStatus) => {
-        if (status.didJustFinish) finish(true);
-      });
+    try {
+      const player = ensureSharedPlayer();
+      detachSharedListener();
 
       try {
-        player!.play();
+        player.pause();
       } catch {
-        finish(false);
-        return;
+        /* noop */
       }
 
-      // 兜底：极少数文件不触发 didJustFinish 时不卡死
-      timeoutId = setTimeout(() => finish(true), 8000);
-    });
+      const ok = await new Promise<boolean>((resolve) => {
+        let settled = false;
 
-    return ok && alive(token);
-  } catch {
-    return false;
-  } finally {
-    if (player) {
-      if (currentPlayer === player) currentPlayer = null;
-      safeRemove(player);
+        const finish = (success: boolean) => {
+          if (settled) return;
+          settled = true;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          detachSharedListener();
+          if (cancelCurrent === cancelHandle) cancelCurrent = null;
+          resolve(success);
+        };
+
+        const cancelHandle = () => finish(false);
+        cancelCurrent = cancelHandle;
+
+        sharedListener = player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+          if (status.didJustFinish) finish(true);
+        });
+
+        void (async () => {
+          try {
+            player.replace(source as NonNullable<PlayableSource>);
+            const loaded = await waitUntilLoaded(player, token);
+            if (!loaded || !alive(token)) {
+              finish(false);
+              return;
+            }
+            await player.seekTo(0);
+            if (!alive(token)) {
+              finish(false);
+              return;
+            }
+            player.play();
+          } catch {
+            finish(false);
+          }
+        })();
+
+        timeoutId = setTimeout(() => finish(true), 10000);
+      });
+
+      if (ok && alive(token)) {
+        consecutiveFailures = 0;
+      } else if (!ok) {
+        consecutiveFailures += 1;
+      }
+      return ok && alive(token);
+    } catch {
+      consecutiveFailures += 1;
+      return false;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (consecutiveFailures >= 2) {
+        consecutiveFailures = 0;
+        await resetAudioEngine();
+      }
     }
-  }
+  });
 }
 
 async function speakFallback(text: string, token: number): Promise<void> {
@@ -118,10 +207,9 @@ async function speakFallback(text: string, token: number): Promise<void> {
   });
 }
 
-let audioModeReady = false;
-async function ensureAudioMode() {
-  if (audioModeReady) return;
+async function ensureAudioMode(force = false) {
   try {
+    await setIsAudioActiveAsync(true);
     await setAudioModeAsync({
       playsInSilentMode: true,
       interruptionMode: 'mixWithOthers',
@@ -129,10 +217,23 @@ async function ensureAudioMode() {
       shouldRouteThroughEarpiece: false,
       allowsRecording: false,
     });
-    audioModeReady = true;
   } catch {
-    /* noop */
+    if (!force) return;
   }
+}
+
+async function resetAudioEngine(): Promise<void> {
+  await withPlayerLock(async () => {
+    disposeSharedPlayer();
+    cancelCurrent = null;
+    try {
+      await setIsAudioActiveAsync(false);
+      await setIsAudioActiveAsync(true);
+      await ensureAudioMode(true);
+    } catch {
+      /* noop */
+    }
+  });
 }
 
 export const audioService = {
@@ -169,6 +270,8 @@ export const audioService = {
 
   async stop(): Promise<void> {
     currentToken++;
+    abortWait?.();
+    abortWait = null;
     try {
       Speech.stop();
     } catch {
@@ -177,5 +280,29 @@ export const audioService = {
     const cancel = cancelCurrent;
     cancelCurrent = null;
     cancel?.();
+
+    await withPlayerLock(async () => {
+      detachSharedListener();
+      if (sharedPlayer) {
+        try {
+          sharedPlayer.pause();
+          await sharedPlayer.seekTo(0);
+        } catch {
+          /* noop */
+        }
+      }
+    });
+  },
+
+  async speakCallText(text: string): Promise<void> {
+    const token = ++currentToken;
+    await ensureAudioMode();
+    if (!alive(token)) return;
+    await speakFallback(text, token);
+  },
+
+  /** 供调试或设置页手动恢复音频 */
+  async recover(): Promise<void> {
+    await resetAudioEngine();
   },
 };

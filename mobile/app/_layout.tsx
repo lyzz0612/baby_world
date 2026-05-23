@@ -19,6 +19,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="animals/index" />
+        <Stack.Screen name="family/index" />
         <Stack.Screen name="settings/index" />
       </Stack>
     </>

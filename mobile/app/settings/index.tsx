@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Application from 'expo-application';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,17 +13,117 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenBackground } from '@/components/ScreenBackground';
-import { checkForUpdate } from '@/src/services/updateChecker';
+import {
+  checkForUpdate,
+  continueUpdateDownload,
+  installPendingUpdate,
+  pauseActiveDownloadForResume,
+  resumePendingDownload,
+  retryFailedDownload,
+  subscribeUpdateUi,
+  syncPendingUpdateUi,
+} from '@/src/services/updateChecker';
+import type { UpdateUiSnapshot } from '@/src/services/updateStore';
 import { colors } from '@/src/theme/colors';
 
 const APP_ICON = require('@/assets/images/icon.png');
 
+function UpdateStatusCard({
+  ui,
+  onInstall,
+  onContinue,
+  onRetry,
+}: {
+  ui: UpdateUiSnapshot;
+  onInstall: () => void;
+  onContinue: () => void;
+  onRetry: () => void;
+}) {
+  if (ui.phase === 'idle' || ui.phase === 'checking') return null;
+
+  const progressPct =
+    ui.progress != null && ui.progress >= 0
+      ? Math.min(100, Math.round(ui.progress * 100))
+      : null;
+
+  return (
+    <View style={styles.statusCard}>
+      {ui.phase === 'downloading' && (
+        <>
+          <Text style={styles.statusTitle}>
+            正在下载 {ui.versionName ?? '新版本'}
+          </Text>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${progressPct ?? 8}%` },
+                progressPct == null && styles.progressFillIndeterminate,
+              ]}
+            />
+          </View>
+          <Text style={styles.statusHint}>
+            {ui.message ?? '下载中…'}
+            {ui.downloadActive ? ' 离开本页会自动保存进度' : ''}
+          </Text>
+          {ui.phase === 'downloading' && !ui.downloadActive && (
+            <Pressable
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+              onPress={onContinue}
+            >
+              <Text style={styles.secondaryButtonText}>继续下载</Text>
+            </Pressable>
+          )}
+        </>
+      )}
+
+      {ui.phase === 'ready' && (
+        <>
+          <Text style={styles.statusTitle}>新版本 {ui.versionName} 已就绪</Text>
+          <Text style={styles.statusHint}>下载完成，可直接安装</Text>
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+            onPress={onInstall}
+          >
+            <Text style={styles.primaryButtonText}>立即安装</Text>
+          </Pressable>
+        </>
+      )}
+
+      {ui.phase === 'failed' && (
+        <>
+          <Text style={styles.statusTitle}>更新下载失败</Text>
+          <Text style={styles.statusHint}>{ui.message ?? '请检查网络后重试'}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+            onPress={onRetry}
+          >
+            <Text style={styles.primaryButtonText}>重新下载</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
-  const [checking, setChecking] = useState(false);
+  const [ui, setUi] = useState<UpdateUiSnapshot>({ phase: 'idle' });
 
   const versionName = Application.nativeApplicationVersion ?? '未知';
   const versionCode = Application.nativeBuildVersion ?? '—';
+
+  useEffect(() => subscribeUpdateUi(setUi), []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void syncPendingUpdateUi();
+      void resumePendingDownload();
+      return () => {
+        void pauseActiveDownloadForResume();
+      };
+    }, [])
+  );
 
   const goHome = () => {
     if (router.canGoBack()) {
@@ -33,14 +133,10 @@ export default function SettingsScreen() {
     }
   };
 
+  const isBusy = ui.phase === 'checking' || ui.phase === 'downloading';
+
   const handleCheckUpdate = async () => {
-    if (checking) return;
-    setChecking(true);
-    try {
-      await checkForUpdate({ manual: true });
-    } finally {
-      setChecking(false);
-    }
+    await checkForUpdate({ manual: true });
   };
 
   return (
@@ -75,21 +171,32 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>更新</Text>
+          <UpdateStatusCard
+            ui={ui}
+            onInstall={() => void installPendingUpdate()}
+            onContinue={() => void continueUpdateDownload()}
+            onRetry={() => void retryFailedDownload()}
+          />
           <Pressable
             style={({ pressed }) => [
               styles.actionRow,
-              pressed && !checking && styles.actionRowPressed,
-              checking && styles.actionRowDisabled,
+              pressed && !isBusy && styles.actionRowPressed,
+              isBusy && styles.actionRowDisabled,
             ]}
             onPress={() => void handleCheckUpdate()}
-            disabled={checking}
             accessibilityLabel="检测更新"
           >
             <View style={styles.actionLeft}>
               <FontAwesome name="refresh" size={20} color={colors.primary} />
-              <Text style={styles.actionLabel}>检测更新</Text>
+              <Text style={styles.actionLabel}>
+                {ui.phase === 'checking'
+                  ? '正在检查…'
+                  : ui.phase === 'downloading'
+                    ? '正在下载…'
+                    : '检测更新'}
+              </Text>
             </View>
-            {checking ? (
+            {isBusy ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
               <FontAwesome name="chevron-right" size={16} color={colors.textMuted} />
@@ -179,6 +286,72 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
     textAlign: 'center',
+  },
+  statusCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  statusTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 10,
+  },
+  statusHint: {
+    fontSize: 14,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E8F5E9',
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  progressFillIndeterminate: {
+    opacity: 0.55,
+  },
+  primaryButton: {
+    marginTop: 14,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  buttonPressed: {
+    opacity: 0.85,
   },
   actionRow: {
     flexDirection: 'row',
