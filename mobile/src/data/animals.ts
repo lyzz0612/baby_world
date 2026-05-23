@@ -15,18 +15,19 @@ export const CATEGORIES = {
 } as const;
 
 export const ANIMALS: Animal[] = [
+  // 农场：常见鸡鸭猫狗优先，其余按熟悉度排列
   { id: 'farm-1', name: '小鸡', category: 'farm', emoji: '🐔', sound: '/sounds/farm-1.mp3' },
-  { id: 'farm-2', name: '小狗', category: 'farm', emoji: '🐶', sound: '/sounds/farm-2.mp3' },
-  { id: 'farm-3', name: '小猫', category: 'farm', emoji: '🐱', sound: '/sounds/farm-3.mp3' },
-  { id: 'farm-4', name: '奶牛', category: 'farm', emoji: '🐄', sound: '/sounds/farm-4.mp3' },
-  { id: 'farm-5', name: '绵羊', category: 'farm', emoji: '🐑', sound: '/sounds/farm-5.mp3' },
-  { id: 'farm-6', name: '小猪', category: 'farm', emoji: '🐷', sound: '/sounds/farm-6.mp3' },
-  { id: 'farm-7', name: '马儿', category: 'farm', emoji: '🐎', sound: '/sounds/farm-7.mp3' },
   { id: 'farm-8', name: '鸭子', category: 'farm', emoji: '🦆', sound: '/sounds/farm-8.mp3' },
+  { id: 'farm-3', name: '小猫', category: 'farm', emoji: '🐱', sound: '/sounds/farm-3.mp3' },
+  { id: 'farm-2', name: '小狗', category: 'farm', emoji: '🐶', sound: '/sounds/farm-2.mp3' },
+  { id: 'farm-13', name: '公鸡', category: 'farm', emoji: '🐓', sound: '/sounds/farm-13.mp3' },
+  { id: 'farm-4', name: '奶牛', category: 'farm', emoji: '🐄', sound: '/sounds/farm-4.mp3' },
+  { id: 'farm-6', name: '小猪', category: 'farm', emoji: '🐷', sound: '/sounds/farm-6.mp3' },
+  { id: 'farm-5', name: '绵羊', category: 'farm', emoji: '🐑', sound: '/sounds/farm-5.mp3' },
+  { id: 'farm-7', name: '马儿', category: 'farm', emoji: '🐎', sound: '/sounds/farm-7.mp3' },
   { id: 'farm-9', name: '大白鹅', category: 'farm', emoji: '🦢', sound: '/sounds/farm-9.mp3' },
   { id: 'farm-11', name: '小毛驴', category: 'farm', emoji: '🫏', sound: '/sounds/farm-11.mp3' },
   { id: 'farm-12', name: '山羊', category: 'farm', emoji: '🐐', sound: '/sounds/farm-12.mp3' },
-  { id: 'farm-13', name: '公鸡', category: 'farm', emoji: '🐓', sound: '/sounds/farm-13.mp3' },
   { id: 'farm-14', name: '青蛙', category: 'farm', emoji: '🐸', sound: '/sounds/farm-14.mp3' },
   { id: 'farm-15', name: '蜜蜂', category: 'farm', emoji: '🐝', sound: '/sounds/farm-15.mp3' },
   { id: 'zoo-1', name: '狮子', category: 'zoo', emoji: '🦁', sound: '/sounds/zoo-1.mp3' },
