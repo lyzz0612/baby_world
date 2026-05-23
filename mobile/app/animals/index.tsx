@@ -18,12 +18,13 @@ import { ANIMALS, type Animal } from '@/src/data/animals';
 import { audioService } from '@/src/services/audioService';
 import { recordAnimalClick, sortAnimalsByClicks } from '@/src/services/clickStats';
 import { colors } from '@/src/theme/colors';
-import { chunk, ITEMS_PER_PAGE } from '@/src/utils/pagination';
+import { chunk, getAnimalGridLayout } from '@/src/utils/pagination';
 
 export default function AnimalsScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const numColumns = width >= 900 ? 4 : width >= 600 ? 3 : 2;
+  const { width, height } = useWindowDimensions();
+  const gridLayout = useMemo(() => getAnimalGridLayout(width, height), [width, height]);
+  const { numColumns, numRows, itemsPerPage, cardSize } = gridLayout;
 
   const [sortedAnimals, setSortedAnimals] = useState<Animal[]>(ANIMALS);
   const [pageIndex, setPageIndex] = useState(0);
@@ -37,9 +38,9 @@ export default function AnimalsScreen() {
   const refreshSort = useCallback(async () => {
     const sorted = await sortAnimalsByClicks(ANIMALS);
     setSortedAnimals(sorted);
-    const total = Math.max(1, Math.ceil(sorted.length / ITEMS_PER_PAGE));
+    const total = Math.max(1, Math.ceil(sorted.length / itemsPerPage));
     setPageIndex((i) => Math.min(i, total - 1));
-  }, []);
+  }, [itemsPerPage]);
 
   useEffect(() => {
     refreshSort().finally(() => setReady(true));
@@ -53,8 +54,8 @@ export default function AnimalsScreen() {
   );
 
   const pages = useMemo(
-    () => chunk(sortedAnimals, ITEMS_PER_PAGE),
-    [sortedAnimals]
+    () => chunk(sortedAnimals, itemsPerPage),
+    [sortedAnimals, itemsPerPage]
   );
   const totalPages = pages.length;
   const safePageIndex = Math.min(pageIndex, Math.max(0, totalPages - 1));
@@ -173,12 +174,16 @@ export default function AnimalsScreen() {
                           key={animal.id}
                           style={[
                             styles.gridItem,
-                            { width: `${100 / numColumns}%` },
+                            {
+                              width: `${100 / numColumns}%`,
+                              height: `${100 / numRows}%`,
+                            },
                           ]}
                         >
                           <AnimalCard
                             animal={animal}
                             isPlaying={playingId === animal.id}
+                            size={cardSize}
                             onPress={() => void handleAnimalPress(animal)}
                           />
                         </View>
@@ -293,14 +298,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   page: {
-    flex: 0,
+    flex: 1,
+    height: '100%',
   },
   grid: {
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     minWidth: 0,
-    alignContent: 'flex-start',
+    minHeight: 0,
   },
   gridItem: {
     padding: 0,
