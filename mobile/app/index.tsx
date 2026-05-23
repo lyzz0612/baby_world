@@ -1,9 +1,12 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
+  Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -13,13 +16,46 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenBackground } from '@/components/ScreenBackground';
 import { colors } from '@/src/theme/colors';
 
+const APP_ICON = require('@/assets/images/icon.png');
+
+type AppModule = {
+  id: string;
+  title: string;
+  icon: string;
+  color: string;
+  route?: string;
+  disabled?: boolean;
+};
+
+const APP_MODULES: AppModule[] = [
+  {
+    id: 'animals',
+    title: '认识动物',
+    icon: '🐾',
+    color: colors.primaryLight,
+    route: '/animals',
+  },
+  {
+    id: 'more',
+    title: '更多功能',
+    icon: '🚀',
+    color: '#e0e0e0',
+    disabled: true,
+  },
+];
+
+function getColumnCount(width: number, isLandscape: boolean): number {
+  if (width >= 900) return isLandscape ? 5 : 4;
+  if (width >= 600) return isLandscape ? 4 : 3;
+  return isLandscape ? 3 : 2;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
-  const isLandscape = width > height && height < 500;
+  const isLandscape = width > height;
   const isTablet = Math.min(width, height) >= 600;
 
-  // logo 持续 bounce 动画，对应 web 端 .logo 的 @keyframes bounce
   const bounce = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -44,79 +80,118 @@ export default function HomeScreen() {
 
   const translateY = bounce.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -20],
+    outputRange: [0, -12],
   });
 
-  const sizes = {
-    logo: isLandscape ? 56 : isTablet ? 120 : 84,
-    title: isLandscape ? 28 : isTablet ? 60 : 40,
-    subtitle: isLandscape ? 14 : isTablet ? 24 : 18,
-    cardIcon: isLandscape ? 40 : isTablet ? 80 : 56,
-    cardTitle: isLandscape ? 18 : isTablet ? 28 : 22,
-    cardDesc: isLandscape ? 12 : isTablet ? 18 : 14,
-    cardPaddingV: isLandscape ? 18 : isTablet ? 48 : 32,
-    headerMb: isLandscape ? 16 : isTablet ? 56 : 36,
+  const columns = getColumnCount(width, isLandscape);
+  const contentMaxWidth = isTablet ? 920 : width;
+  const horizontalPadding = isTablet ? 32 : 20;
+  const gap = isTablet ? 24 : 16;
+  const gridInnerWidth = Math.min(width, contentMaxWidth) - horizontalPadding * 2;
+  const tileSize = (gridInnerWidth - gap * (columns - 1)) / columns;
+
+  const sizes = useMemo(
+    () => ({
+      appIcon: isTablet ? 88 : 72,
+      title: isTablet ? 34 : 28,
+      subtitle: isTablet ? 18 : 15,
+      tileIcon: isTablet ? 56 : 44,
+      tileLabel: isTablet ? 18 : 15,
+      topBarTitle: isTablet ? 28 : 22,
+      settingsBtn: isTablet ? 52 : 44,
+    }),
+    [isTablet]
+  );
+
+  const handleModulePress = (module: AppModule) => {
+    if (module.disabled || !module.route) return;
+    router.push(module.route as '/animals');
   };
 
   return (
     <ScreenBackground>
       <SafeAreaView style={styles.safe}>
-        <View style={[styles.header, { marginBottom: sizes.headerMb }]}>
-          <Animated.Text
-            style={[
-              styles.logo,
-              { fontSize: sizes.logo, lineHeight: sizes.logo + 6, transform: [{ translateY }] },
-            ]}
-          >
-            🎨
-          </Animated.Text>
-          <Text style={[styles.title, { fontSize: sizes.title, lineHeight: sizes.title * 1.1 }]}>
-            宝宝世界
-          </Text>
-          <Text style={[styles.subtitle, { fontSize: sizes.subtitle }]}>
-            学习玩耍，快乐成长～
-          </Text>
-        </View>
-
-        <View style={[styles.grid, isLandscape && styles.gridLandscape]}>
+        <View style={[styles.topBar, { paddingHorizontal: horizontalPadding }]}>
+          <Text style={[styles.topBarTitle, { fontSize: sizes.topBarTitle }]}>宝宝世界</Text>
           <Pressable
             style={({ pressed }) => [
-              styles.card,
-              styles.cardActive,
-              { paddingVertical: sizes.cardPaddingV },
-              pressed && styles.pressed,
+              styles.settingsButton,
+              { width: sizes.settingsBtn, height: sizes.settingsBtn, borderRadius: sizes.settingsBtn / 2 },
+              pressed && styles.settingsPressed,
             ]}
-            onPress={() => router.push('/animals')}
+            onPress={() => router.push('/settings')}
+            accessibilityLabel="设置"
+            hitSlop={8}
           >
-            <Text style={[styles.cardIcon, { fontSize: sizes.cardIcon }]}>🐾</Text>
-            <Text style={[styles.cardTitle, { fontSize: sizes.cardTitle }]}>认识动物</Text>
-            <Text style={[styles.cardDesc, { fontSize: sizes.cardDesc }]}>
-              去认识各种小动物吧！
-            </Text>
+            <FontAwesome name="cog" size={isTablet ? 26 : 22} color="#666" />
           </Pressable>
+        </View>
 
-          <View
-            style={[
-              styles.card,
-              styles.cardDisabled,
-              { paddingVertical: sizes.cardPaddingV },
-            ]}
-          >
-            <Text style={[styles.cardIcon, { fontSize: sizes.cardIcon }]}>🚀</Text>
-            <Text
-              style={[
-                styles.cardTitle,
-                styles.cardTitleMuted,
-                { fontSize: sizes.cardTitle },
-              ]}
-            >
-              更多功能
-            </Text>
-            <Text style={[styles.cardDescMuted, { fontSize: sizes.cardDesc }]}>
-              即将推出...
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.hero, { marginBottom: isTablet ? 36 : 24 }]}>
+            <Animated.View style={{ transform: [{ translateY }] }}>
+              <Image
+                source={APP_ICON}
+                style={[
+                  styles.heroIcon,
+                  { width: sizes.appIcon, height: sizes.appIcon, borderRadius: sizes.appIcon * 0.22 },
+                ]}
+              />
+            </Animated.View>
+            <Text style={[styles.heroTitle, { fontSize: sizes.title }]}>宝宝世界</Text>
+            <Text style={[styles.heroSubtitle, { fontSize: sizes.subtitle }]}>
+              学习玩耍，快乐成长～
             </Text>
           </View>
-        </View>
+
+          <Text style={[styles.sectionLabel, { fontSize: isTablet ? 16 : 14 }]}>应用</Text>
+
+          <View style={[styles.grid, { gap, width: gridInnerWidth }]}>
+            {APP_MODULES.map((module) => (
+              <Pressable
+                key={module.id}
+                style={({ pressed }) => [
+                  styles.tile,
+                  { width: tileSize },
+                  module.disabled && styles.tileDisabled,
+                  pressed && !module.disabled && styles.tilePressed,
+                ]}
+                onPress={() => handleModulePress(module)}
+                disabled={module.disabled}
+                accessibilityLabel={module.title}
+              >
+                <View
+                  style={[
+                    styles.tileIconWrap,
+                    {
+                      width: tileSize - (isTablet ? 20 : 16),
+                      height: tileSize - (isTablet ? 20 : 16),
+                      backgroundColor: module.color,
+                    },
+                  ]}
+                >
+                  <Text style={{ fontSize: sizes.tileIcon }}>{module.icon}</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.tileLabel,
+                    { fontSize: sizes.tileLabel },
+                    module.disabled && styles.tileLabelDisabled,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {module.title}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </ScreenBackground>
   );
@@ -125,76 +200,91 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
   },
-  header: {
+  topBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  logo: {
-    marginBottom: 8,
-  },
-  title: {
+  topBarTitle: {
     fontWeight: '800',
     color: colors.primary,
-    marginBottom: 8,
-    // 对应 web 端 text-shadow: 3px 3px 0px #FFE66D
+  },
+  settingsButton: {
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  settingsPressed: {
+    opacity: 0.85,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 32,
+  },
+  hero: {
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  heroIcon: {
+    marginBottom: 12,
+  },
+  heroTitle: {
+    fontWeight: '800',
+    color: colors.primary,
+    marginBottom: 6,
     textShadowColor: '#FFE66D',
-    textShadowOffset: { width: 3, height: 3 },
+    textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 0,
   },
-  subtitle: {
+  heroSubtitle: {
     color: colors.primaryLight,
+    textAlign: 'center',
+  },
+  sectionLabel: {
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginBottom: 16,
+    marginLeft: 4,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'center',
   },
-  gridLandscape: {
-    gap: 12,
-  },
-  card: {
-    flex: 1,
-    minWidth: 180,
-    maxWidth: 320,
-    borderRadius: 24,
-    paddingHorizontal: 24,
+  tile: {
     alignItems: 'center',
-    backgroundColor: '#fff',
+    marginBottom: 8,
+  },
+  tileIconWrap: {
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  cardActive: {
-    backgroundColor: colors.primaryLight,
+  tileDisabled: {
+    opacity: 0.55,
   },
-  cardDisabled: {
-    backgroundColor: '#e0e0e0',
+  tilePressed: {
+    transform: [{ scale: 0.96 }],
   },
-  pressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  cardIcon: {
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 6,
-  },
-  cardTitleMuted: {
-    color: '#757575',
-  },
-  cardDesc: {
-    color: 'rgba(255,255,255,0.9)',
+  tileLabel: {
+    fontWeight: '600',
+    color: colors.text,
     textAlign: 'center',
   },
-  cardDescMuted: {
-    color: '#757575',
-    textAlign: 'center',
+  tileLabelDisabled: {
+    color: colors.textMuted,
   },
 });

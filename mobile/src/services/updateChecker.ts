@@ -5,7 +5,7 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import { Alert, Platform } from 'react-native';
 
 /**
- * 应用内自动更新（OTA）：启动时拉取远端 latest.json，比 versionCode；
+ * 应用内更新（OTA）：设置页手动拉取远端 latest.json，比 versionCode；
  * 远端更高时弹原生 Alert 让用户选择「立即更新 / 稍后」；
  * 远端 minSupport > 本机 versionCode 时只给「立即更新」（best-effort 强制更新）。
  *
@@ -110,25 +110,59 @@ function showUpdateDialog(manifest: LatestManifest, force: boolean): Promise<voi
   });
 }
 
+export type UpdateCheckResult =
+  | 'skipped'
+  | 'error'
+  | 'up_to_date'
+  | 'update_shown';
+
 let checking = false;
 
-/** 启动时调用一次；同进程内重复调用会被去重 */
-export async function checkForUpdate(): Promise<void> {
-  if (Platform.OS !== 'android') return;
-  if (checking) return;
+/**
+ * 检查应用更新。仅应在设置页手动触发；`manual: true` 时会向用户展示检查结果。
+ */
+export async function checkForUpdate(options?: {
+  manual?: boolean;
+}): Promise<UpdateCheckResult> {
+  const manual = options?.manual ?? false;
+
+  if (Platform.OS !== 'android') {
+    if (manual) {
+      Alert.alert('暂不支持', '当前平台暂不支持应用内更新。');
+    }
+    return 'skipped';
+  }
+  if (checking) return 'skipped';
   checking = true;
   try {
     const url = getUpdateCheckUrl();
-    if (!url) return;
+    if (!url) {
+      if (manual) {
+        Alert.alert('无法检查', '更新服务未配置。');
+      }
+      return 'skipped';
+    }
 
     const manifest = await fetchManifest(url);
-    if (!manifest) return;
+    if (!manifest) {
+      if (manual) {
+        Alert.alert('检查失败', '无法连接更新服务器，请稍后重试。');
+      }
+      return 'error';
+    }
 
     const current = getCurrentVersionCode();
-    if (manifest.versionCode <= current) return;
+    if (manifest.versionCode <= current) {
+      if (manual) {
+        const versionName = Application.nativeApplicationVersion ?? '未知';
+        Alert.alert('已是最新版本', `当前版本 ${versionName} 已是最新。`);
+      }
+      return 'up_to_date';
+    }
 
     const force = (manifest.minSupport ?? 0) > current;
     await showUpdateDialog(manifest, force);
+    return 'update_shown';
   } finally {
     checking = false;
   }
