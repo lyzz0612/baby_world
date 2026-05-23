@@ -70,6 +70,10 @@ jobs:
         working-directory: mobile
         run: node scripts/patch-android-signing.mjs
 
+      - name: Patch AsyncStorage Maven repo
+        working-directory: mobile
+        run: node scripts/patch-android-async-storage.mjs
+
       - name: Prepare release keystore
         env:
           ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}

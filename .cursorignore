@@ -1,0 +1,10 @@
+# 本地密钥与签名文件 — 禁止 Cursor / Agent 读取
+.github/secrets.local.json
+.github/secrets.local.*.json
+!/.github/secrets.local.template.json
+.github/release.keystore
+**/*.keystore
+**/*.jks
+.env
+.env.*
+!.env.example

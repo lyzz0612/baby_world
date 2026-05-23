@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# 本地 GitHub Secrets 配置（含 R2 / 签名密钥，切勿提交）
+.github/secrets.local.json
+.github/secrets.local.*.json
+!.github/secrets.local.template.json
+.github/release.keystore
+*.keystore
+*.jks
+release.keystore
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
