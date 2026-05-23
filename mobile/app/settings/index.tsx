@@ -16,7 +16,9 @@ import { ScreenBackground } from '@/components/ScreenBackground';
 import {
   checkForUpdate,
   continueUpdateDownload,
+  forceRedownloadUpdate,
   installPendingUpdate,
+  openUpdateDownloadInBrowser,
   pauseActiveDownloadForResume,
   resumePendingDownload,
   retryFailedDownload,
@@ -33,11 +35,15 @@ function UpdateStatusCard({
   onInstall,
   onContinue,
   onRetry,
+  onForceRedownload,
+  onBrowserDownload,
 }: {
   ui: UpdateUiSnapshot;
   onInstall: () => void;
   onContinue: () => void;
   onRetry: () => void;
+  onForceRedownload: () => void;
+  onBrowserDownload: () => void;
 }) {
   if (ui.phase === 'idle' || ui.phase === 'checking') return null;
 
@@ -67,11 +73,27 @@ function UpdateStatusCard({
             {ui.downloadActive ? ' 离开本页会自动保存进度' : ''}
           </Text>
           {ui.phase === 'downloading' && !ui.downloadActive && (
+            <View style={styles.buttonRow}>
+              <Pressable
+                style={({ pressed }) => [styles.secondaryButton, styles.buttonHalf, pressed && styles.buttonPressed]}
+                onPress={onContinue}
+              >
+                <Text style={styles.secondaryButtonText}>继续下载</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.secondaryButton, styles.buttonHalf, pressed && styles.buttonPressed]}
+                onPress={onForceRedownload}
+              >
+                <Text style={styles.secondaryButtonText}>重新下载</Text>
+              </Pressable>
+            </View>
+          )}
+          {(ui.phase === 'downloading' || ui.phase === 'failed') && (
             <Pressable
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-              onPress={onContinue}
+              style={({ pressed }) => [styles.fallbackButton, pressed && styles.buttonPressed]}
+              onPress={onBrowserDownload}
             >
-              <Text style={styles.secondaryButtonText}>继续下载</Text>
+              <Text style={styles.fallbackButtonText}>浏览器下载（保底）</Text>
             </Pressable>
           )}
         </>
@@ -99,6 +121,12 @@ function UpdateStatusCard({
             onPress={onRetry}
           >
             <Text style={styles.primaryButtonText}>重新下载</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.fallbackButton, pressed && styles.buttonPressed]}
+            onPress={onBrowserDownload}
+          >
+            <Text style={styles.fallbackButtonText}>浏览器下载（保底）</Text>
           </Pressable>
         </>
       )}
@@ -176,6 +204,8 @@ export default function SettingsScreen() {
             onInstall={() => void installPendingUpdate()}
             onContinue={() => void continueUpdateDownload()}
             onRetry={() => void retryFailedDownload()}
+            onForceRedownload={() => void forceRedownloadUpdate()}
+            onBrowserDownload={() => void openUpdateDownloadInBrowser(ui.downloadUrl)}
           />
           <Pressable
             style={({ pressed }) => [
@@ -344,6 +374,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.primary,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  buttonHalf: {
+    flex: 1,
+    marginTop: 0,
+  },
+  fallbackButton: {
+    marginTop: 10,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+  },
+  fallbackButtonText: {
+    color: '#E65100',
+    fontSize: 15,
+    fontWeight: '600',
   },
   secondaryButtonText: {
     color: colors.primary,

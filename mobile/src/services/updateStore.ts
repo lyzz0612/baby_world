@@ -31,8 +31,8 @@ export type UpdateUiSnapshot = {
   progressBytes?: number;
   progressTotal?: number;
   message?: string;
-  /** 当前是否有活跃下载任务（非暂停） */
   downloadActive?: boolean;
+  downloadUrl?: string;
 };
 
 let snapshot: UpdateUiSnapshot = { phase: 'idle' };
@@ -78,4 +78,9 @@ export function formatDownloadProgress(bytes: number, total: number): string {
     return `${pct}% · ${mb(bytes)} / ${mb(total)}`;
   }
   return `已下载 ${mb(bytes)}`;
+}
+
+export function isDownloadProgressComplete(bytes: number, total: number): boolean {
+  if (total <= 0) return false;
+  return bytes >= total * 0.995;
 }

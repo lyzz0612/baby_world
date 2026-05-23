@@ -4,11 +4,13 @@ import { File, Paths } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { DownloadResumable } from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
+import * as Linking from 'expo-linking';
 import { Alert, Platform } from 'react-native';
 import {
   clearPendingUpdate,
   formatDownloadProgress,
   getUpdateUiSnapshot,
+  isDownloadProgressComplete,
   loadPendingUpdate,
   savePendingUpdate,
   setUpdateUiSnapshot,
@@ -81,11 +83,46 @@ async function fetchManifest(url: string): Promise<LatestManifest | null> {
   }
 }
 
-async function verifyApkMd5(manifest: LatestManifest, fileUri: string): Promise<void> {
+function getLocalApkSize(fileUri: string): number {
+  try {
+    const file = new File(fileUri);
+    return file.exists ? file.size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function computeFileMd5(fileUri: string): Promise<string | null> {
+  try {
+    const file = new File(fileUri);
+    if (file.md5) return normalizeMd5(file.md5);
+  } catch {
+    /* noop */
+  }
+  try {
+    const info = await FileSystem.getInfoAsync(fileUri, { md5: true });
+    if (info.exists && 'md5' in info && info.md5) {
+      return normalizeMd5(String(info.md5));
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
+}
+
+function isApkFileComplete(pending: PendingUpdateRecord): boolean {
+  const size = getLocalApkSize(pending.fileUri);
+  if (size <= 0) return false;
+  if (pending.progressTotal > 0) {
+    return size >= pending.progressTotal * 0.995;
+  }
+  return isDownloadProgressComplete(pending.progressBytes, pending.progressTotal) && size > 1024 * 1024;
+}
+
+async function verifyApkMd5(manifest: Pick<LatestManifest, 'md5'>, fileUri: string): Promise<void> {
   if (!manifest.md5) return;
-  const file = new File(fileUri);
   const expected = normalizeMd5(manifest.md5);
-  const actual = file.md5 ? normalizeMd5(file.md5) : null;
+  const actual = await computeFileMd5(fileUri);
   if (!actual || actual !== expected) {
     throw new Error('apk md5 mismatch');
   }
@@ -93,6 +130,7 @@ async function verifyApkMd5(manifest: LatestManifest, fileUri: string): Promise<
 
 async function installApkFile(fileUri: string): Promise<void> {
   const file = new File(fileUri);
+  if (!file.exists) throw new Error('apk file missing');
   const contentUri = file.contentUri;
   if (!contentUri) throw new Error('contentUri unavailable');
   await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
@@ -102,15 +140,57 @@ async function installApkFile(fileUri: string): Promise<void> {
   });
 }
 
+async function deleteLocalApk(fileUri: string): Promise<void> {
+  try {
+    const file = new File(fileUri);
+    if (file.exists) file.delete();
+  } catch {
+    /* noop */
+  }
+  try {
+    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+  } catch {
+    /* noop */
+  }
+}
+
+function showFallbackAlert(title: string, message: string, downloadUrl?: string): void {
+  Alert.alert(title, message, [
+    { text: '取消', style: 'cancel' },
+    {
+      text: '重新下载',
+      onPress: () => {
+        void forceRedownloadUpdate();
+      },
+    },
+    {
+      text: '浏览器下载',
+      onPress: () => {
+        void openUpdateDownloadInBrowser(downloadUrl);
+      },
+    },
+  ]);
+}
+
 let activeResumable: DownloadResumable | null = null;
 let checking = false;
 let progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function manifestFromPending(pending: PendingUpdateRecord): LatestManifest {
+  return {
+    versionCode: pending.versionCode,
+    versionName: pending.versionName,
+    url: pending.url,
+    md5: pending.md5,
+  };
+}
 
 function updateDownloadProgress(
   manifest: LatestManifest,
   fileUri: string,
   bytes: number,
-  total: number
+  total: number,
+  message?: string
 ): void {
   const progress = total > 0 ? bytes / total : undefined;
   setUpdateUiSnapshot({
@@ -120,8 +200,9 @@ function updateDownloadProgress(
     progress,
     progressBytes: bytes,
     progressTotal: total,
-    message: formatDownloadProgress(bytes, total),
+    message: message ?? formatDownloadProgress(bytes, total),
     downloadActive: true,
+    downloadUrl: manifest.url,
   });
 
   if (progressSaveTimer) return;
@@ -142,16 +223,25 @@ function updateDownloadProgress(
 }
 
 async function markDownloadReady(record: PendingUpdateRecord): Promise<void> {
-  const ready: PendingUpdateRecord = { ...record, status: 'completed' };
+  const size = getLocalApkSize(record.fileUri);
+  const ready: PendingUpdateRecord = {
+    ...record,
+    status: 'completed',
+    progressBytes: size > 0 ? size : record.progressBytes,
+    progressTotal: record.progressTotal > 0 ? record.progressTotal : size,
+    resumeState: null,
+    errorMessage: undefined,
+  };
   await savePendingUpdate(ready);
   setUpdateUiSnapshot({
     phase: 'ready',
     versionName: record.versionName,
     versionCode: record.versionCode,
     progress: 1,
-    progressBytes: record.progressTotal > 0 ? record.progressTotal : record.progressBytes,
-    progressTotal: record.progressTotal,
+    progressBytes: ready.progressBytes,
+    progressTotal: ready.progressTotal,
     message: '下载完成，可安装',
+    downloadUrl: record.url,
   });
 }
 
@@ -177,21 +267,122 @@ async function markDownloadFailed(
     versionName: failed.versionName,
     versionCode: failed.versionCode,
     message: errorMessage,
+    downloadUrl: failed.url,
   });
 }
 
-export async function downloadManifestUpdate(manifest: LatestManifest): Promise<void> {
+/** 下载已到齐但未标记完成时，尝试校验并转为可安装 */
+export async function tryFinalizePendingDownload(
+  pending?: PendingUpdateRecord | null
+): Promise<boolean> {
+  const record = pending ?? (await loadPendingUpdate());
+  if (!record || record.status === 'completed') {
+    return record?.status === 'completed';
+  }
+  if (!isApkFileComplete(record)) return false;
+
+  setUpdateUiSnapshot({
+    phase: 'downloading',
+    versionName: record.versionName,
+    versionCode: record.versionCode,
+    progress: 1,
+    progressBytes: record.progressBytes,
+    progressTotal: record.progressTotal,
+    message: '下载完成，正在校验安装包…',
+    downloadActive: false,
+    downloadUrl: record.url,
+  });
+
+  try {
+    await verifyApkMd5(manifestFromPending(record), record.fileUri);
+    await markDownloadReady(record);
+    return true;
+  } catch {
+    await markDownloadFailed(record, '安装包校验失败，请重新下载或使用浏览器下载。');
+    return false;
+  }
+}
+
+export async function openUpdateDownloadInBrowser(url?: string): Promise<void> {
+  let target = url;
+  if (!target) {
+    const pending = await loadPendingUpdate();
+    target = pending?.url;
+  }
+  if (!target) {
+    const checkUrl = getUpdateCheckUrl();
+    if (checkUrl) {
+      const manifest = await fetchManifest(checkUrl);
+      target = manifest?.url;
+    }
+  }
+  if (!target) {
+    Alert.alert('无法打开', '没有可用的下载链接，请稍后重试。');
+    return;
+  }
+  try {
+    await Linking.openURL(appendQueryParam(target, 't', String(Date.now())));
+  } catch {
+    Alert.alert('无法打开浏览器', '请复制链接到浏览器手动下载。');
+  }
+}
+
+export async function forceRedownloadUpdate(manifest?: LatestManifest): Promise<void> {
+  if (activeResumable) {
+    activeResumable = null;
+  }
+
+  const pending = await loadPendingUpdate();
+  const target =
+    manifest ??
+    (pending
+      ? manifestFromPending(pending)
+      : null);
+
+  if (pending?.fileUri) {
+    await deleteLocalApk(pending.fileUri);
+  }
+  await clearPendingUpdate();
+  setUpdateUiSnapshot({ phase: 'idle' });
+
+  if (!target) {
+    await checkForUpdate({ manual: true });
+    return;
+  }
+
+  await downloadManifestUpdate(target, { force: true });
+}
+
+export async function downloadManifestUpdate(
+  manifest: LatestManifest,
+  options?: { force?: boolean }
+): Promise<void> {
   if (Platform.OS !== 'android') return;
 
-  const snap = getUpdateUiSnapshot();
-  if (snap.phase === 'downloading') return;
+  if (activeResumable) return;
+
+  if (!options?.force) {
+    const snap = getUpdateUiSnapshot();
+    if (snap.phase === 'downloading' && snap.downloadActive) return;
+
+    const pending = await loadPendingUpdate();
+    if (pending?.versionCode === manifest.versionCode && pending.status !== 'failed') {
+      if (await tryFinalizePendingDownload(pending)) return;
+    }
+  }
 
   const fileUri = getApkFileUri(manifest.versionCode);
   const pending = await loadPendingUpdate();
   const resumeData =
-    pending?.versionCode === manifest.versionCode
+    !options?.force &&
+    pending?.versionCode === manifest.versionCode &&
+    pending.status === 'downloading'
       ? pending.resumeState?.resumeData ?? undefined
       : undefined;
+
+  if (options?.force) {
+    await deleteLocalApk(fileUri);
+  }
 
   const baseRecord: PendingUpdateRecord = {
     versionCode: manifest.versionCode,
@@ -201,8 +392,14 @@ export async function downloadManifestUpdate(manifest: LatestManifest): Promise<
     fileUri,
     status: 'downloading',
     resumeState: null,
-    progressBytes: pending?.versionCode === manifest.versionCode ? pending.progressBytes : 0,
-    progressTotal: pending?.versionCode === manifest.versionCode ? pending.progressTotal : 0,
+    progressBytes:
+      !options?.force && pending?.versionCode === manifest.versionCode
+        ? pending.progressBytes
+        : 0,
+    progressTotal:
+      !options?.force && pending?.versionCode === manifest.versionCode
+        ? pending.progressTotal
+        : 0,
   };
   await savePendingUpdate(baseRecord);
   updateDownloadProgress(
@@ -215,7 +412,7 @@ export async function downloadManifestUpdate(manifest: LatestManifest): Promise<
   const resumable = FileSystem.createDownloadResumable(
     manifest.url,
     fileUri,
-    { md5: false },
+    { md5: true },
     (progress) => {
       updateDownloadProgress(
         manifest,
@@ -236,25 +433,55 @@ export async function downloadManifestUpdate(manifest: LatestManifest): Promise<
       throw new Error('download cancelled');
     }
 
-    await verifyApkMd5(manifest, fileUri);
-    const snap = getUpdateUiSnapshot();
+    if (progressSaveTimer) {
+      clearTimeout(progressSaveTimer);
+      progressSaveTimer = null;
+    }
+
+    const finalBytes = getLocalApkSize(fileUri) || (getUpdateUiSnapshot().progressBytes ?? 0);
+    const snapTotal = getUpdateUiSnapshot().progressTotal ?? 0;
+    const finalTotal = snapTotal > 0 ? snapTotal : finalBytes;
+
+    updateDownloadProgress(manifest, fileUri, finalBytes, finalTotal, '下载完成，正在校验安装包…');
+    setUpdateUiSnapshot({
+      ...getUpdateUiSnapshot(),
+      downloadActive: false,
+    });
+
+    if (manifest.md5 && result.md5) {
+      const expected = normalizeMd5(manifest.md5);
+      const actual = normalizeMd5(result.md5);
+      if (actual !== expected) {
+        throw new Error('apk md5 mismatch');
+      }
+    } else {
+      await verifyApkMd5(manifest, fileUri);
+    }
+
     await markDownloadReady({
       ...baseRecord,
-      progressBytes: snap.progressBytes ?? baseRecord.progressBytes,
-      progressTotal: snap.progressTotal ?? baseRecord.progressTotal,
+      progressBytes: finalBytes,
+      progressTotal: finalTotal,
     });
   } catch (e) {
     activeResumable = null;
+    const snap = getUpdateUiSnapshot();
     const message =
       e instanceof Error && e.message === 'apk md5 mismatch'
-        ? '安装包校验失败，可能下载不完整或被缓存。'
+        ? '安装包校验失败，可能下载不完整或被 CDN 缓存。请重新下载或使用浏览器下载。'
         : '下载失败，请检查网络后重试。';
-    await markDownloadFailed(baseRecord, message);
+    await markDownloadFailed(
+      {
+        ...baseRecord,
+        progressBytes: snap.progressBytes ?? baseRecord.progressBytes,
+        progressTotal: snap.progressTotal ?? baseRecord.progressTotal,
+      },
+      message
+    );
     throw e;
   }
 }
 
-/** 离开设置页时暂停，便于稍后续传 */
 export async function pauseActiveDownloadForResume(): Promise<void> {
   if (!activeResumable) return;
   try {
@@ -284,51 +511,78 @@ export async function pauseActiveDownloadForResume(): Promise<void> {
 
 export async function continueUpdateDownload(): Promise<void> {
   const pending = await loadPendingUpdate();
-  if (!pending || pending.status !== 'downloading') return;
-  if (getUpdateUiSnapshot().phase === 'downloading' && activeResumable) return;
+  if (!pending) return;
 
-  await downloadManifestUpdate({
-    versionCode: pending.versionCode,
-    versionName: pending.versionName,
-    url: pending.url,
-    md5: pending.md5,
+  if (pending.status === 'completed') {
+    await syncPendingUpdateUi();
+    return;
+  }
+
+  if (await tryFinalizePendingDownload(pending)) return;
+  if (activeResumable) return;
+
+  await downloadManifestUpdate(manifestFromPending(pending), {
+    force: !pending.resumeState?.resumeData,
   });
 }
 
 export async function resumePendingDownload(): Promise<boolean> {
   const pending = await loadPendingUpdate();
-  if (!pending || pending.status !== 'downloading' || !pending.resumeState) {
+  if (!pending || pending.status !== 'downloading') {
     return false;
   }
-  if (getUpdateUiSnapshot().phase === 'downloading') return true;
+  if (getUpdateUiSnapshot().phase === 'downloading' && activeResumable) return true;
 
   await continueUpdateDownload();
   return true;
 }
 
 export async function installPendingUpdate(): Promise<void> {
-  const pending = await loadPendingUpdate();
+  let pending = await loadPendingUpdate();
+
+  if (pending && pending.status !== 'completed') {
+    await tryFinalizePendingDownload(pending);
+    pending = await loadPendingUpdate();
+  }
+
   if (!pending || pending.status !== 'completed') {
-    Alert.alert('无法安装', '没有已下载完成的更新包。');
+    showFallbackAlert(
+      '无法安装',
+      pending?.errorMessage ?? '没有已下载完成的更新包。可重新下载或使用浏览器下载。',
+      pending?.url
+    );
     return;
   }
+
   if (pending.versionCode <= getCurrentVersionCode()) {
     await clearPendingUpdate();
     setUpdateUiSnapshot({ phase: 'idle' });
     Alert.alert('无需安装', '该更新包已过期或版本不高于当前安装。');
     return;
   }
+
+  if (!getLocalApkSize(pending.fileUri)) {
+    await markDownloadFailed(pending, '本地安装包已丢失，请重新下载。');
+    showFallbackAlert('安装包丢失', '本地文件不存在，请重新下载。', pending.url);
+    return;
+  }
+
   try {
     await installApkFile(pending.fileUri);
   } catch (e) {
-    Alert.alert('安装失败', '无法打开系统安装器，请稍后重试。');
+    showFallbackAlert(
+      '安装失败',
+      '无法打开系统安装器。可重新下载或使用浏览器下载后手动安装。',
+      pending.url
+    );
     console.warn('[update] install failed', e);
   }
 }
 
 export async function syncPendingUpdateUi(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  if (getUpdateUiSnapshot().phase === 'downloading' || checking) return;
+  if (getUpdateUiSnapshot().phase === 'downloading' && activeResumable) return;
+  if (checking) return;
 
   const pending = await loadPendingUpdate();
   const current = getCurrentVersionCode();
@@ -348,6 +602,7 @@ export async function syncPendingUpdateUi(): Promise<void> {
       versionCode: pending.versionCode,
       progress: 1,
       message: '下载完成，可安装',
+      downloadUrl: pending.url,
     });
     return;
   }
@@ -358,11 +613,15 @@ export async function syncPendingUpdateUi(): Promise<void> {
       versionName: pending.versionName,
       versionCode: pending.versionCode,
       message: pending.errorMessage ?? '下载失败',
+      downloadUrl: pending.url,
     });
     return;
   }
 
   if (pending.status === 'downloading') {
+    if (await tryFinalizePendingDownload(pending)) return;
+
+    const stuck = isApkFileComplete(pending);
     setUpdateUiSnapshot({
       phase: 'downloading',
       versionName: pending.versionName,
@@ -374,9 +633,12 @@ export async function syncPendingUpdateUi(): Promise<void> {
       progressBytes: pending.progressBytes,
       progressTotal: pending.progressTotal,
       downloadActive: false,
-      message: pending.resumeState?.resumeData
-        ? `${formatDownloadProgress(pending.progressBytes, pending.progressTotal)} · 已暂停，可继续`
-        : `${formatDownloadProgress(pending.progressBytes, pending.progressTotal)} · 未完成，可继续`,
+      downloadUrl: pending.url,
+      message: stuck
+        ? `${formatDownloadProgress(pending.progressBytes, pending.progressTotal)} · 校验未完成，请点继续或重新下载`
+        : pending.resumeState?.resumeData
+          ? `${formatDownloadProgress(pending.progressBytes, pending.progressTotal)} · 已暂停，可继续`
+          : `${formatDownloadProgress(pending.progressBytes, pending.progressTotal)} · 未完成，可继续`,
     });
   }
 }
@@ -392,12 +654,12 @@ function showUpdateDialog(manifest: LatestManifest, force: boolean): Promise<voi
 
   const handleDownload = (resolve: () => void) => () => {
     void downloadManifestUpdate(manifest)
-      .catch((e) => {
-        const text =
-          e instanceof Error && e.message === 'apk md5 mismatch'
-            ? '安装包校验失败，可能下载不完整或被缓存。'
-            : '下载或安装出现问题，请稍后重试。';
-        Alert.alert('更新失败', text);
+      .catch(() => {
+        showFallbackAlert(
+          '更新失败',
+          '应用内下载或校验失败，可重新下载或使用浏览器下载。',
+          manifest.url
+        );
       })
       .finally(resolve);
   };
@@ -407,7 +669,10 @@ function showUpdateDialog(manifest: LatestManifest, force: boolean): Promise<voi
       Alert.alert(
         title,
         `${message}\n\n（本次更新为强制更新，必须升级后才能继续使用）`,
-        [{ text: '立即下载', onPress: handleDownload(resolve) }],
+        [
+          { text: '浏览器下载', onPress: () => void openUpdateDownloadInBrowser(manifest.url) },
+          { text: '立即下载', onPress: handleDownload(resolve) },
+        ],
         { cancelable: false }
       );
     } else {
@@ -416,6 +681,7 @@ function showUpdateDialog(manifest: LatestManifest, force: boolean): Promise<voi
         message,
         [
           { text: '稍后', style: 'cancel', onPress: () => resolve() },
+          { text: '浏览器下载', onPress: () => void openUpdateDownloadInBrowser(manifest.url) },
           { text: '立即下载', onPress: handleDownload(resolve) },
         ],
         { cancelable: true }
@@ -444,7 +710,7 @@ export async function checkForUpdate(options?: {
   }
 
   const ui = getUpdateUiSnapshot();
-  if (ui.phase === 'downloading') {
+  if (ui.phase === 'downloading' && ui.downloadActive) {
     if (manual) {
       showBusyAlert(
         '正在下载',
@@ -476,31 +742,26 @@ export async function checkForUpdate(options?: {
   checking = true;
   setUpdateUiSnapshot({ ...ui, phase: 'checking' });
   try {
+    await syncPendingUpdateUi();
+
     const pending = await loadPendingUpdate();
     const current = getCurrentVersionCode();
+
     if (
       pending &&
       pending.versionCode > current &&
       pending.status === 'downloading' &&
-      pending.resumeState?.resumeData
+      !activeResumable
     ) {
       if (manual) {
         Alert.alert(
-          '继续下载',
-          `检测到未完成的新版本 ${pending.versionName} 下载，是否继续？`,
+          '继续更新',
+          `检测到未完成的新版本 ${pending.versionName} 下载。`,
           [
             { text: '取消', style: 'cancel' },
-            {
-              text: '继续下载',
-              onPress: () => {
-                void downloadManifestUpdate({
-                  versionCode: pending.versionCode,
-                  versionName: pending.versionName,
-                  url: pending.url,
-                  md5: pending.md5,
-                });
-              },
-            },
+            { text: '浏览器下载', onPress: () => void openUpdateDownloadInBrowser(pending.url) },
+            { text: '继续下载', onPress: () => void continueUpdateDownload() },
+            { text: '重新下载', onPress: () => void forceRedownloadUpdate(manifestFromPending(pending)) },
           ]
         );
         return 'downloading';
@@ -564,14 +825,8 @@ export async function checkForUpdate(options?: {
 
 export async function retryFailedDownload(): Promise<void> {
   const pending = await loadPendingUpdate();
-  if (!pending || pending.status !== 'failed') return;
-  await savePendingUpdate({ ...pending, status: 'downloading', errorMessage: undefined });
-  await downloadManifestUpdate({
-    versionCode: pending.versionCode,
-    versionName: pending.versionName,
-    url: pending.url,
-    md5: pending.md5,
-  });
+  if (!pending) return;
+  await forceRedownloadUpdate(manifestFromPending(pending));
 }
 
 export {
