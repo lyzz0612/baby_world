@@ -30,12 +30,17 @@ if (src.includes(marker)) {
 }
 
 const mavenLine =
-  "    maven { url '$rootDir/../node_modules/@react-native-async-storage/async-storage/android/local_repo' }";
+  "    maven { url \"${rootProject.projectDir}/../node_modules/@react-native-async-storage/async-storage/android/local_repo\" }";
 
 if (src.includes("maven { url 'https://www.jitpack.io' }")) {
   src = src.replace(
     "maven { url 'https://www.jitpack.io' }",
     `maven { url 'https://www.jitpack.io' }\n${mavenLine}`
+  );
+} else if (src.includes("$rootDir/../node_modules/@react-native-async-storage/async-storage/android/local_repo")) {
+  src = src.replace(
+    "maven { url '$rootDir/../node_modules/@react-native-async-storage/async-storage/android/local_repo' }",
+    mavenLine.trim()
   );
 } else {
   src = src.replace(
