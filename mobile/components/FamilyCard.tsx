@@ -1,7 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { FamilyTitle } from '@/src/data/familyTitles';
 import { colors } from '@/src/theme/colors';
-import type { AnimalCardSize } from '@/src/utils/pagination';
+import type { FamilyCardSize } from '@/src/utils/pagination';
 
 type Props = {
   title: FamilyTitle;
@@ -9,25 +9,25 @@ type Props = {
   editMode?: boolean;
   isActive?: boolean;
   onPress: () => void;
-  size?: AnimalCardSize;
+  size?: FamilyCardSize;
 };
 
 const NAME_HEIGHT = {
-  phone: 28,
-  tablet: 32,
-  large: 38,
+  phone: 34,
+  tablet: 38,
+  large: 44,
 } as const;
 
 const NAME_SIZE = {
-  phone: 17,
-  tablet: 20,
-  large: 24,
+  phone: 19,
+  tablet: 23,
+  large: 28,
 } as const;
 
 const EMOJI_SIZE = {
-  phone: 48,
-  tablet: 60,
-  large: 72,
+  phone: 64,
+  tablet: 80,
+  large: 96,
 } as const;
 
 export function FamilyCard({
@@ -85,10 +85,10 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 20,
-    paddingTop: 8,
-    paddingHorizontal: 8,
-    paddingBottom: 6,
+    borderRadius: 22,
+    paddingTop: 10,
+    paddingHorizontal: 10,
+    paddingBottom: 8,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -114,10 +114,10 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     minHeight: 0,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFF8F0',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   photo: {
     width: '100%',
@@ -133,16 +133,16 @@ const styles = StyleSheet.create({
   },
   editBadge: {
     position: 'absolute',
-    right: 6,
-    bottom: 6,
+    right: 8,
+    bottom: 8,
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   editBadgeText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   nameBar: {

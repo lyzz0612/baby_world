@@ -1,5 +1,7 @@
 export type AnimalCardSize = 'phone' | 'tablet' | 'large';
 
+export type FamilyCardSize = AnimalCardSize;
+
 export type AnimalGridLayout = {
   numColumns: number;
   numRows: number;
@@ -73,4 +75,36 @@ export function chunk<T>(array: T[], size: number): T[][] {
     pages.push(array.slice(i, i + size));
   }
   return pages.length ? pages : [[]];
+}
+
+export type FamilyGridLayout = {
+  numColumns: number;
+  numRows: number;
+  cardSize: FamilyCardSize;
+  gap: number;
+};
+
+/** 称呼页：单页展示全部项，加大间距，减少误触 */
+export function getFamilyGridLayout(
+  width: number,
+  _height: number,
+  itemCount: number
+): FamilyGridLayout {
+  const presets: Array<Omit<FamilyGridLayout, 'numRows'> & { minWidth: number }> = [
+    { minWidth: 1100, numColumns: 7, cardSize: 'large', gap: 24 },
+    { minWidth: 900, numColumns: 6, cardSize: 'large', gap: 22 },
+    { minWidth: 680, numColumns: 5, cardSize: 'tablet', gap: 20 },
+    { minWidth: 480, numColumns: 4, cardSize: 'tablet', gap: 16 },
+    { minWidth: 0, numColumns: 2, cardSize: 'phone', gap: 14 },
+  ];
+
+  const preset = presets.find((p) => width >= p.minWidth) ?? presets[presets.length - 1];
+  const numRows = Math.ceil(itemCount / preset.numColumns);
+
+  return {
+    numColumns: preset.numColumns,
+    numRows,
+    cardSize: preset.cardSize,
+    gap: preset.gap,
+  };
 }
