@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useKeepAwake } from 'expo-keep-awake';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -6,6 +7,8 @@ import { StatusBar } from 'expo-status-bar';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  useKeepAwake();
+
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);

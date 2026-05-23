@@ -18,13 +18,14 @@ import { ANIMALS, type Animal } from '@/src/data/animals';
 import { audioService } from '@/src/services/audioService';
 import { recordAnimalClick, sortAnimalsByClicks } from '@/src/services/clickStats';
 import { colors } from '@/src/theme/colors';
-import { chunk, getAnimalGridLayout } from '@/src/utils/pagination';
+import { chunk, getAnimalGridLayout, getPageNavMetrics } from '@/src/utils/pagination';
 
 export default function AnimalsScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const gridLayout = useMemo(() => getAnimalGridLayout(width, height), [width, height]);
   const { numColumns, numRows, itemsPerPage, cardSize } = gridLayout;
+  const pageNav = useMemo(() => getPageNavMetrics(cardSize), [cardSize]);
 
   const [sortedAnimals, setSortedAnimals] = useState<Animal[]>(ANIMALS);
   const [pageIndex, setPageIndex] = useState(0);
@@ -138,19 +139,25 @@ export default function AnimalsScreen() {
         </View>
 
         <View style={styles.pager}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.pageNav,
-              safePageIndex === 0 && styles.pageNavDisabled,
-              pressed && safePageIndex !== 0 && styles.pageNavPressed,
-            ]}
-            onPress={goPrev}
-            disabled={safePageIndex === 0}
-            accessibilityLabel="上一页"
-            hitSlop={8}
-          >
-            <FontAwesome name="chevron-left" size={28} color={colors.primary} />
-          </Pressable>
+          <View style={[styles.pageNavRail, { width: pageNav.railWidth }]}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.pageNav,
+                {
+                  width: pageNav.buttonSize,
+                  height: pageNav.buttonSize,
+                  borderRadius: pageNav.buttonSize / 2,
+                },
+                safePageIndex === 0 && styles.pageNavDisabled,
+                pressed && safePageIndex !== 0 && styles.pageNavPressed,
+              ]}
+              onPress={goPrev}
+              disabled={safePageIndex === 0}
+              accessibilityLabel="上一页"
+            >
+              <FontAwesome name="chevron-left" size={pageNav.iconSize} color={colors.primary} />
+            </Pressable>
+          </View>
 
           <View style={styles.viewport} onLayout={onViewportLayout}>
             {viewportWidth > 0 ? (
@@ -195,19 +202,25 @@ export default function AnimalsScreen() {
             ) : null}
           </View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.pageNav,
-              safePageIndex >= totalPages - 1 && styles.pageNavDisabled,
-              pressed && safePageIndex < totalPages - 1 && styles.pageNavPressed,
-            ]}
-            onPress={goNext}
-            disabled={safePageIndex >= totalPages - 1}
-            accessibilityLabel="下一页"
-            hitSlop={8}
-          >
-            <FontAwesome name="chevron-right" size={28} color={colors.primary} />
-          </Pressable>
+          <View style={[styles.pageNavRail, styles.pageNavRailRight, { width: pageNav.railWidth }]}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.pageNav,
+                {
+                  width: pageNav.buttonSize,
+                  height: pageNav.buttonSize,
+                  borderRadius: pageNav.buttonSize / 2,
+                },
+                safePageIndex >= totalPages - 1 && styles.pageNavDisabled,
+                pressed && safePageIndex < totalPages - 1 && styles.pageNavPressed,
+              ]}
+              onPress={goNext}
+              disabled={safePageIndex >= totalPages - 1}
+              accessibilityLabel="下一页"
+            >
+              <FontAwesome name="chevron-right" size={pageNav.iconSize} color={colors.primary} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.dots}>
@@ -267,13 +280,17 @@ const styles = StyleSheet.create({
   pager: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'stretch',
+  },
+  pageNavRail: {
+    flexShrink: 0,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  pageNavRailRight: {
+    alignItems: 'flex-end',
   },
   pageNav: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',

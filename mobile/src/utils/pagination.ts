@@ -52,6 +52,21 @@ export function getAnimalGridLayout(width: number, height: number): AnimalGridLa
   };
 }
 
+export function getPageNavMetrics(cardSize: AnimalCardSize): {
+  buttonSize: number;
+  iconSize: number;
+  railWidth: number;
+} {
+  switch (cardSize) {
+    case 'large':
+      return { buttonSize: 100, iconSize: 46, railWidth: 112 };
+    case 'tablet':
+      return { buttonSize: 84, iconSize: 38, railWidth: 96 };
+    default:
+      return { buttonSize: 68, iconSize: 32, railWidth: 76 };
+  }
+}
+
 export function chunk<T>(array: T[], size: number): T[][] {
   const pages: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
