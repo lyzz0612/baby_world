@@ -97,7 +97,7 @@ export default function FamilyScreen() {
     } catch {
       Alert.alert('更换失败', '无法读取本地照片，请换一张试试。');
     }
-  }, []);
+  }, [modalTitle]);
 
   const openTitle = useCallback(
     async (title: FamilyTitle) => {
