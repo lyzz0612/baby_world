@@ -1,9 +1,11 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Animated,
   BackHandler,
+  Easing,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -12,7 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import AnimatedReanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FamilyAddCard, FamilyCard } from '@/components/FamilyCard';
 import { FamilyDraggableGridItem } from '@/components/FamilyDraggableGridItem';
@@ -31,7 +33,7 @@ import {
   saveFamilyRelation,
 } from '@/src/services/familyRelationStore';
 import { colors } from '@/src/theme/colors';
-import { FAMILY_LAYOUT_REFERENCE_COUNT, getFamilyGridLayout } from '@/src/utils/pagination';
+import { chunk, getFamilyGridLayout, getPageNavMetrics } from '@/src/utils/pagination';
 import { findDropIndex, type LayoutRect } from '@/src/utils/familyGridReorder';
 
 type ImageMaps = {
@@ -56,7 +58,8 @@ export default function FamilyScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const [gridWidth, setGridWidth] = useState(0);
-  const [gridHeight, setGridHeight] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [pageIndex, setPageIndex] = useState(0);
 
   const [relations, setRelations] = useState<FamilyRelation[]>([]);
   const [listImageMap, setListImageMap] = useState<Record<string, string>>({});
@@ -79,18 +82,14 @@ export default function FamilyScreen() {
   const dragOriginW = useSharedValue(0);
   const dragTranslateX = useSharedValue(0);
   const dragTranslateY = useSharedValue(0);
+  const trackTranslate = useRef(new Animated.Value(0)).current;
 
-  const gridLayout = useMemo(
-    () =>
-      getFamilyGridLayout(
-        width,
-        height,
-        Math.max(relations.length || 1, FAMILY_LAYOUT_REFERENCE_COUNT),
-        gridWidth
-      ),
-    [width, height, relations.length, gridWidth]
-  );
-  const { numColumns, cardSize, gap, rowGap, imageSize } = gridLayout;
+  const gridLayout = useMemo(() => getFamilyGridLayout(width, height), [width, height]);
+  const { numColumns, itemsPerPage, cardSize, gap, rowGap, imageSize } = gridLayout;
+  const pageNav = useMemo(() => getPageNavMetrics(cardSize), [cardSize]);
+  const pages = useMemo(() => chunk(relations, itemsPerPage), [relations, itemsPerPage]);
+  const totalPages = pages.length;
+  const safePageIndex = Math.min(pageIndex, Math.max(0, totalPages - 1));
   const dragEnabled = editMode && selectedIds.length === 0 && relations.length > 1;
   const draggingRelation = useMemo(
     () => relations.find((item) => item.id === draggingId) ?? null,
@@ -105,6 +104,21 @@ export default function FamilyScreen() {
     zIndex: 1000,
     elevation: 16,
   }));
+
+  useEffect(() => {
+    const total = Math.max(1, Math.ceil(relations.length / itemsPerPage));
+    setPageIndex((index) => Math.min(index, total - 1));
+  }, [relations.length, itemsPerPage]);
+
+  useEffect(() => {
+    if (editMode) return;
+    Animated.timing(trackTranslate, {
+      toValue: -safePageIndex * viewportWidth,
+      duration: viewportWidth > 0 ? 320 : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [editMode, safePageIndex, viewportWidth, trackTranslate]);
 
   const refreshAll = useCallback(async () => {
     const [nextRelations, imageMap] = await Promise.all([getFamilyRelations(), getFamilyImageMap()]);
@@ -397,13 +411,76 @@ export default function FamilyScreen() {
   };
 
   const onGridLayout = (e: LayoutChangeEvent) => {
-    const { width: w, height: h } = e.nativeEvent.layout;
+    const w = e.nativeEvent.layout.width;
     if (w !== gridWidth) setGridWidth(w);
-    if (h !== gridHeight) setGridHeight(h);
   };
 
-  const cellWidth =
+  const onViewportLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w !== viewportWidth) setViewportWidth(w);
+  };
+
+  const editCellWidth =
     gridWidth > 0 ? (gridWidth - gap * (numColumns - 1)) / numColumns : undefined;
+  const browseCellWidth =
+    viewportWidth > 0 ? (viewportWidth - gap * (numColumns - 1)) / numColumns : undefined;
+
+  const goPrevPage = () => setPageIndex((index) => Math.max(0, index - 1));
+  const goNextPage = () => setPageIndex((index) => Math.min(totalPages - 1, index + 1));
+
+  const renderGridItem = (
+    key: string,
+    content: ReactNode,
+    containerWidth: number | undefined,
+    itemWidth: number | undefined
+  ) => (
+    <View
+      key={key}
+      style={[
+        styles.gridItem,
+        itemWidth != null
+          ? { width: itemWidth }
+          : containerWidth != null
+            ? { width: (containerWidth - gap * (numColumns - 1)) / numColumns }
+            : { width: `${100 / numColumns}%` },
+      ]}
+    >
+      {content}
+    </View>
+  );
+
+  const renderRelationCard = (relation: FamilyRelation, inEditMode: boolean) => {
+    const card = (
+      <FamilyCard
+        relation={relation}
+        imageUri={listImageMap[relation.id]}
+        editMode={inEditMode}
+        selected={selectedIds.includes(relation.id)}
+        isActive={activeId === relation.id}
+        size={cardSize}
+        imageSize={imageSize}
+        disabled={!!draggingId}
+        onPress={() => void handleCardPress(relation)}
+        onSelectPress={() => toggleRelationSelection(relation.id)}
+      />
+    );
+
+    if (!inEditMode || !dragEnabled) return card;
+
+    return (
+      <FamilyDraggableGridItem
+        itemId={relation.id}
+        dragEnabled={dragEnabled}
+        isDragging={draggingId === relation.id}
+        onMeasure={handleMeasureItem}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+      >
+        {card}
+      </FamilyDraggableGridItem>
+    );
+  };
 
   const modalImageUri = modalRelation
     ? detailImageMap[modalRelation.id] ?? listImageMap[modalRelation.id]
@@ -468,95 +545,141 @@ export default function FamilyScreen() {
           </Text>
         )}
 
-        <View style={styles.gridWrap} onLayout={onGridLayout}>
-          <ScrollView
-            contentContainerStyle={styles.gridScroll}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            scrollEnabled={!draggingId}
-          >
-            {relations.length === 0 && !editMode && (
-              <View style={styles.emptyHintWrap}>
-                <Text style={styles.emptyTitle}>还没有关系</Text>
-                <Text style={styles.emptyHint}>手动添加家人、亲友，让宝宝认识他们</Text>
-              </View>
-            )}
-            <View style={[styles.grid, { gap, rowGap }]}>
-              {editMode && (
-                <View
-                  style={[
-                    styles.gridItem,
-                    cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
-                  ]}
-                >
+        {editMode ? (
+          <View style={styles.gridWrap} onLayout={onGridLayout}>
+            <ScrollView
+              contentContainerStyle={styles.gridScroll}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              scrollEnabled={!draggingId}
+            >
+              <View style={[styles.grid, { gap, rowGap }]}>
+                {renderGridItem(
+                  'add-relation',
                   <FamilyAddCard
                     onPress={() => void openAddEditor()}
                     size={cardSize}
                     imageSize={imageSize}
                     label="添加关系"
-                  />
-                </View>
-              )}
-              {relations.map((relation) => {
-                const card = (
-                  <FamilyCard
-                    relation={relation}
-                    imageUri={listImageMap[relation.id]}
-                    editMode={editMode}
-                    selected={selectedIds.includes(relation.id)}
-                    isActive={activeId === relation.id}
-                    size={cardSize}
-                    imageSize={imageSize}
-                    disabled={!!draggingId}
-                    onPress={() => void handleCardPress(relation)}
-                    onSelectPress={() => toggleRelationSelection(relation.id)}
-                  />
-                );
+                  />,
+                  gridWidth,
+                  editCellWidth
+                )}
+                {relations.map((relation) =>
+                  renderGridItem(
+                    relation.id,
+                    renderRelationCard(relation, true),
+                    gridWidth,
+                    editCellWidth
+                  )
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        ) : (
+          <View style={styles.pager}>
+            <View style={[styles.pageNavRail, { width: pageNav.railWidth }]}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.pageNav,
+                  {
+                    width: pageNav.buttonSize,
+                    height: pageNav.buttonSize,
+                    borderRadius: pageNav.buttonSize / 2,
+                  },
+                  safePageIndex === 0 && styles.pageNavDisabled,
+                  pressed && safePageIndex !== 0 && styles.pageNavPressed,
+                ]}
+                onPress={goPrevPage}
+                disabled={safePageIndex === 0}
+                accessibilityLabel="上一页"
+              >
+                <FontAwesome name="chevron-left" size={pageNav.iconSize} color={colors.primary} />
+              </Pressable>
+            </View>
 
-                return (
-                  <View
-                    key={relation.id}
-                    style={[
-                      styles.gridItem,
-                      cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
-                    ]}
-                  >
-                    {dragEnabled ? (
-                      <FamilyDraggableGridItem
-                        itemId={relation.id}
-                        dragEnabled={dragEnabled}
-                        isDragging={draggingId === relation.id}
-                        onMeasure={handleMeasureItem}
-                        onDragStart={handleDragStart}
-                        onDragMove={handleDragMove}
-                        onDragEnd={handleDragEnd}
-                      >
-                        {card}
-                      </FamilyDraggableGridItem>
-                    ) : (
-                      card
-                    )}
-                  </View>
-                );
-              })}
-              {!editMode && relations.length === 0 && (
-                <View
+            <View style={styles.viewport} onLayout={onViewportLayout}>
+              {viewportWidth > 0 ? (
+                <Animated.View
                   style={[
-                    styles.gridItem,
-                    cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
+                    styles.track,
+                    {
+                      width: viewportWidth * pages.length,
+                      transform: [{ translateX: trackTranslate }],
+                    },
                   ]}
                 >
-                  <FamilyAddCard
-                    onPress={() => void openAddEditor()}
-                    size={cardSize}
-                    imageSize={imageSize}
-                    label="添加第一个关系"
-                  />
-                </View>
-              )}
+                  {pages.map((pageRelations, pageIdx) => (
+                    <View key={pageIdx} style={[styles.browsePage, { width: viewportWidth }]}>
+                      {relations.length === 0 && pageIdx === 0 && (
+                        <View style={styles.emptyHintWrap}>
+                          <Text style={styles.emptyTitle}>还没有关系</Text>
+                          <Text style={styles.emptyHint}>手动添加家人、亲友，让宝宝认识他们</Text>
+                        </View>
+                      )}
+                      <View style={[styles.grid, { gap, rowGap }]}>
+                        {pageRelations.map((relation) =>
+                          renderGridItem(
+                            relation.id,
+                            renderRelationCard(relation, false),
+                            viewportWidth,
+                            browseCellWidth
+                          )
+                        )}
+                        {relations.length === 0 && pageIdx === 0 &&
+                          renderGridItem(
+                            'add-first',
+                            <FamilyAddCard
+                              onPress={() => void openAddEditor()}
+                              size={cardSize}
+                              imageSize={imageSize}
+                              label="添加第一个关系"
+                            />,
+                            viewportWidth,
+                            browseCellWidth
+                          )}
+                      </View>
+                    </View>
+                  ))}
+                </Animated.View>
+              ) : null}
             </View>
-          </ScrollView>
-        </View>
+
+            <View style={[styles.pageNavRail, styles.pageNavRailRight, { width: pageNav.railWidth }]}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.pageNav,
+                  {
+                    width: pageNav.buttonSize,
+                    height: pageNav.buttonSize,
+                    borderRadius: pageNav.buttonSize / 2,
+                  },
+                  safePageIndex >= totalPages - 1 && styles.pageNavDisabled,
+                  pressed && safePageIndex < totalPages - 1 && styles.pageNavPressed,
+                ]}
+                onPress={goNextPage}
+                disabled={safePageIndex >= totalPages - 1}
+                accessibilityLabel="下一页"
+              >
+                <FontAwesome name="chevron-right" size={pageNav.iconSize} color={colors.primary} />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {!editMode && relations.length > 0 && (
+          <View style={styles.dots}>
+            {pages.map((_, idx) => (
+              <Pressable
+                key={idx}
+                style={[styles.dot, idx === safePageIndex && styles.dotActive]}
+                onPress={() => setPageIndex(idx)}
+                accessibilityLabel={`第 ${idx + 1} 页`}
+                hitSlop={8}
+              />
+            ))}
+          </View>
+        )}
 
         <Text style={styles.hint}>
           {editMode
@@ -564,7 +687,7 @@ export default function FamilyScreen() {
               ? '删除按钮在右上角 ✓ 旁边'
               : '点左上角取消或右上角 ✓ 完成编辑'
             : relations.length > 0
-              ? '点卡片看大图 · 大图点击重播'
+              ? `第 ${safePageIndex + 1} / ${totalPages} 页 · 点两边大按钮翻页 · 点卡片看大图`
               : '添加关系后可点卡片听语音'}
         </Text>
 
@@ -588,8 +711,8 @@ export default function FamilyScreen() {
       </SafeAreaView>
 
       {draggingId && draggingRelation && (
-        <Animated.View pointerEvents="none" style={styles.dragOverlay}>
-          <Animated.View style={[styles.dragFloating, floatingDragStyle]}>
+        <AnimatedReanimated.View pointerEvents="none" style={styles.dragOverlay}>
+          <AnimatedReanimated.View style={[styles.dragFloating, floatingDragStyle]}>
             <FamilyCard
               relation={draggingRelation}
               imageUri={listImageMap[draggingRelation.id]}
@@ -598,8 +721,8 @@ export default function FamilyScreen() {
               imageSize={imageSize}
               onPress={() => undefined}
             />
-          </Animated.View>
-        </Animated.View>
+          </AnimatedReanimated.View>
+        </AnimatedReanimated.View>
       )}
     </ScreenBackground>
   );
@@ -698,6 +821,65 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     overflow: 'visible',
+  },
+  pager: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 0,
+  },
+  pageNavRail: {
+    flexShrink: 0,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  pageNavRailRight: {
+    alignItems: 'flex-end',
+  },
+  pageNav: {
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  pageNavDisabled: {
+    opacity: 0.35,
+  },
+  pageNavPressed: {
+    opacity: 0.7,
+  },
+  viewport: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  track: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  browsePage: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 12,
+  },
+  dot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,107,107,0.25)',
+  },
+  dotActive: {
+    backgroundColor: colors.primary,
+    transform: [{ scale: 1.2 }],
   },
   emptyHintWrap: {
     alignItems: 'center',
