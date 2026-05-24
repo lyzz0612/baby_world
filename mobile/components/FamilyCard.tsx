@@ -48,27 +48,28 @@ export function FamilyAddCard({
   imageSize,
   label = '添加关系',
 }: AddCardProps) {
-  const mediaStyle =
-    imageSize && imageSize > 0
-      ? { width: imageSize, height: imageSize }
-      : styles.mediaSquare;
-
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, styles.addCard, pressed && styles.cardPressed]}
-      onPress={onPress}
-      accessibilityLabel={label}
-      accessibilityRole="button"
-    >
-      <View style={[styles.mediaArea, mediaStyle, styles.addMedia]}>
-        <FontAwesome name="plus" size={imageSize ? imageSize * 0.28 : 36} color={colors.primary} />
-      </View>
-      <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
-        <Text style={[styles.name, styles.addName, { fontSize: NAME_SIZE[size] }]} numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-    </Pressable>
+    <View style={[styles.card, styles.addCard]}>
+      <Pressable
+        style={({ pressed }) => [styles.cardBody, pressed && styles.cardPressed]}
+        onPress={onPress}
+        accessibilityLabel={label}
+        accessibilityRole="button"
+      >
+        <View style={[styles.mediaArea, styles.mediaSquare, styles.addMedia]}>
+          <FontAwesome
+            name="plus"
+            size={imageSize ? imageSize * 0.28 : size === 'large' ? 42 : size === 'tablet' ? 36 : 30}
+            color={colors.primary}
+          />
+        </View>
+        <View style={[styles.nameBar, { height: NAME_HEIGHT[size] }]}>
+          <Text style={[styles.name, styles.addName, { fontSize: NAME_SIZE[size] }]} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -84,11 +85,6 @@ export function FamilyCard({
   size = 'phone',
   imageSize,
 }: Props) {
-  const mediaStyle =
-    imageSize && imageSize > 0
-      ? { width: imageSize, height: imageSize }
-      : styles.mediaSquare;
-
   const emojiSize = imageSize
     ? Math.round(imageSize * EMOJI_SIZE[size])
     : size === 'large'
@@ -129,7 +125,7 @@ export function FamilyCard({
         accessibilityLabel={editMode ? `编辑${relation.name}` : relation.name}
         accessibilityRole="button"
       >
-        <View style={[styles.mediaArea, mediaStyle]}>
+        <View style={[styles.mediaArea, styles.mediaSquare]}>
           {showPhoto && imageUri ? (
             <Image
               key={`${relation.id}:${editMode ? 'edit' : 'view'}`}
@@ -175,6 +171,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingBottom: 8,
     overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -187,7 +185,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addCard: {
-    borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: 'dashed',
     backgroundColor: '#FFF9F6',
@@ -199,13 +196,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cardEdit: {
-    borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: 'dashed',
   },
   cardSelected: {
-    borderWidth: 2,
     borderColor: colors.primary,
+    borderStyle: 'solid',
   },
   cardPressed: {
     transform: [{ scale: 0.98 }],

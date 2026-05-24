@@ -87,13 +87,25 @@ export type FamilyGridLayout = {
 
 const FAMILY_NAME_HEIGHT = { phone: 34, tablet: 38, large: 44 } as const;
 const FAMILY_CARD_PADDING = { phone: 16, tablet: 18, large: 20 } as const;
-/** 旧版称呼页预设项数量，用作布局尺寸基准 */
+/** FamilyCard 左右 padding 10 + 10 */
+const FAMILY_CARD_HORIZONTAL_INSET = 20;
+/** 列表方图至少占格子内容宽度的比例 */
+const FAMILY_IMAGE_WIDTH_RATIO = 0.85;
+const FAMILY_IMAGE_WIDTH_MIN_RATIO = 0.75;
+/** 旧版称呼页预设项数量，用作列数估算基准 */
 export const FAMILY_LAYOUT_REFERENCE_COUNT = 14;
 
 function familyCardSizeForImage(imageSize: number): FamilyCardSize {
   if (imageSize >= 110) return 'large';
   if (imageSize >= 80) return 'tablet';
   return 'phone';
+}
+
+function familyImageSizeForCell(cellW: number, cardSize: FamilyCardSize): number {
+  const contentW = Math.max(0, cellW - FAMILY_CARD_HORIZONTAL_INSET);
+  const target = Math.floor(contentW * FAMILY_IMAGE_WIDTH_RATIO);
+  const minimum = Math.floor(contentW * FAMILY_IMAGE_WIDTH_MIN_RATIO);
+  return Math.max(minimum, target);
 }
 
 /** 关系谱页：沿用旧版网格算法，按满屏项数估算卡片大小 */
@@ -104,7 +116,7 @@ export function getFamilyGridLayout(
   gridWidth?: number,
   _gridHeight?: number
 ): FamilyGridLayout & { imageSize?: number } {
-  const layoutItemCount = Math.max(itemCount, FAMILY_LAYOUT_REFERENCE_COUNT);
+  const layoutItemCount = FAMILY_LAYOUT_REFERENCE_COUNT;
   const gapPresets = [
     { minWidth: 900, gap: 40, rowGap: 48 },
     { minWidth: 480, gap: 30, rowGap: 38 },
@@ -117,7 +129,7 @@ export function getFamilyGridLayout(
     gridWidth && gridWidth > 0
       ? gridWidth
       : screenWidth - (screenWidth >= 680 ? 64 : 40);
-  /** 固定参考高度，避免编辑提示条出现/消失时图片区域尺寸抖动或空白 */
+  /** 固定参考高度，避免编辑提示条出现/消失时列数估算抖动 */
   const layoutHeight = Math.min(Math.max(screenHeight * 0.5, 380), 580);
 
   if (width <= 0) {
@@ -150,10 +162,14 @@ export function getFamilyGridLayout(
     for (const size of ['phone', 'tablet', 'large'] as const) {
       const nameH = FAMILY_NAME_HEIGHT[size];
       const pad = FAMILY_CARD_PADDING[size];
-      const maxImage = Math.min(cellW - pad, cellH - nameH - pad);
-      if (maxImage < 52) continue;
+      const widthBasedImage = familyImageSizeForCell(cellW, size);
+      const heightBasedImage = Math.floor(cellH - nameH - pad);
+      const squareImage = Math.max(
+        Math.floor((cellW - FAMILY_CARD_HORIZONTAL_INSET) * FAMILY_IMAGE_WIDTH_MIN_RATIO),
+        Math.min(widthBasedImage, heightBasedImage)
+      );
+      if (squareImage < 52) continue;
 
-      const squareImage = Math.floor(maxImage);
       if (squareImage > best.imageSize) {
         best = {
           numColumns: cols,
@@ -168,9 +184,11 @@ export function getFamilyGridLayout(
   }
 
   if (best.imageSize <= 0) {
-    const pad = FAMILY_CARD_PADDING[best.cardSize];
     const cellW = (width - gap * (best.numColumns - 1)) / best.numColumns;
-    best.imageSize = Math.max(52, Math.floor(cellW - pad));
+    best.imageSize = Math.max(52, familyImageSizeForCell(cellW, best.cardSize));
+  } else {
+    const cellW = (width - gap * (best.numColumns - 1)) / best.numColumns;
+    best.imageSize = familyImageSizeForCell(cellW, best.cardSize);
   }
 
   return best;

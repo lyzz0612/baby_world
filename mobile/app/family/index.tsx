@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -79,12 +80,15 @@ export default function FamilyScreen() {
   const dragTranslateX = useSharedValue(0);
   const dragTranslateY = useSharedValue(0);
 
-  const visibleItemCount = relations.length + (editMode ? 1 : 0);
-  const gridItemCount = Math.max(visibleItemCount || 1, FAMILY_LAYOUT_REFERENCE_COUNT);
-
   const gridLayout = useMemo(
-    () => getFamilyGridLayout(width, height, gridItemCount, gridWidth),
-    [width, height, gridItemCount, gridWidth]
+    () =>
+      getFamilyGridLayout(
+        width,
+        height,
+        Math.max(relations.length || 1, FAMILY_LAYOUT_REFERENCE_COUNT),
+        gridWidth
+      ),
+    [width, height, relations.length, gridWidth]
   );
   const { numColumns, cardSize, gap, rowGap, imageSize } = gridLayout;
   const dragEnabled = editMode && selectedIds.length === 0 && relations.length > 1;
@@ -325,7 +329,7 @@ export default function FamilyScreen() {
     }
   };
 
-  const toggleEditMode = () => {
+  const exitEditMode = useCallback(() => {
     playTokenRef.current++;
     void audioService.stop();
     setModalRelation(null);
@@ -334,13 +338,42 @@ export default function FamilyScreen() {
     if (editorRelation) {
       closeEditor();
     }
-    const leavingEdit = editMode;
-    setEditMode((value) => !value);
+    setEditMode(false);
     setDraggingId(null);
-    if (leavingEdit) {
-      void refreshAll();
+    void refreshAll();
+  }, [closeEditor, editorRelation, refreshAll]);
+
+  const handleHeaderBack = () => {
+    if (editMode) {
+      exitEditMode();
+      return;
     }
+    goHome();
   };
+
+  const toggleEditMode = () => {
+    if (editMode) {
+      exitEditMode();
+      return;
+    }
+
+    playTokenRef.current++;
+    void audioService.stop();
+    setModalRelation(null);
+    setActiveId(null);
+    setSelectedIds([]);
+    setEditMode(true);
+    setDraggingId(null);
+  };
+
+  useEffect(() => {
+    if (!editMode) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      exitEditMode();
+      return true;
+    });
+    return () => sub.remove();
+  }, [editMode, exitEditMode]);
 
   const confirmBatchDelete = () => {
     if (selectedIds.length === 0) {
@@ -381,14 +414,21 @@ export default function FamilyScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <Pressable
-            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-            onPress={goHome}
-            accessibilityLabel="返回首页"
+            style={({ pressed }) => [
+              editMode ? styles.cancelButton : styles.iconButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={handleHeaderBack}
+            accessibilityLabel={editMode ? '取消编辑' : '返回首页'}
             hitSlop={8}
           >
-            <FontAwesome name="chevron-left" size={22} color="#666" />
+            {editMode ? (
+              <Text style={styles.cancelButtonText}>取消</Text>
+            ) : (
+              <FontAwesome name="chevron-left" size={22} color="#666" />
+            )}
           </Pressable>
-          <Text style={styles.pageTitle}>宝宝关系谱</Text>
+          <Text style={styles.pageTitle}>{editMode ? '编辑关系谱' : '宝宝关系谱'}</Text>
           <View style={styles.headerActions}>
             {editMode && selectedIds.length > 0 && (
               <Pressable
@@ -408,7 +448,7 @@ export default function FamilyScreen() {
                 pressed && styles.pressed,
               ]}
               onPress={toggleEditMode}
-              accessibilityLabel={editMode ? '退出编辑' : '编辑关系谱'}
+              accessibilityLabel={editMode ? '完成编辑' : '编辑关系谱'}
               hitSlop={8}
             >
               <FontAwesome
@@ -424,7 +464,7 @@ export default function FamilyScreen() {
           <Text style={styles.editHint}>
             {selectedIds.length > 0
               ? `已选 ${selectedIds.length} 项 · 点右上角 🗑 删除，或点卡片继续编辑`
-              : '长按拖动排序 · 点卡片编辑 · 右上角勾选可删除'}
+              : '长按拖动排序 · 点卡片编辑 · 左上角取消或右上角 ✓ 完成'}
           </Text>
         )}
 
@@ -442,7 +482,7 @@ export default function FamilyScreen() {
               </View>
             )}
             <View style={[styles.grid, { gap, rowGap }]}>
-              {(editMode || relations.length === 0) && (
+              {editMode && (
                 <View
                   style={[
                     styles.gridItem,
@@ -453,7 +493,7 @@ export default function FamilyScreen() {
                     onPress={() => void openAddEditor()}
                     size={cardSize}
                     imageSize={imageSize}
-                    label={relations.length === 0 ? '添加第一个关系' : '添加关系'}
+                    label="添加关系"
                   />
                 </View>
               )}
@@ -499,6 +539,21 @@ export default function FamilyScreen() {
                   </View>
                 );
               })}
+              {!editMode && relations.length === 0 && (
+                <View
+                  style={[
+                    styles.gridItem,
+                    cellWidth != null ? { width: cellWidth } : { width: `${100 / numColumns}%` },
+                  ]}
+                >
+                  <FamilyAddCard
+                    onPress={() => void openAddEditor()}
+                    size={cardSize}
+                    imageSize={imageSize}
+                    label="添加第一个关系"
+                  />
+                </View>
+              )}
             </View>
           </ScrollView>
         </View>
@@ -506,8 +561,8 @@ export default function FamilyScreen() {
         <Text style={styles.hint}>
           {editMode
             ? selectedIds.length > 0
-              ? '删除按钮在右上角铅笔旁边'
-              : '编辑完成后点右上角 ✓ 退出'
+              ? '删除按钮在右上角 ✓ 旁边'
+              : '点左上角取消或右上角 ✓ 完成编辑'
             : relations.length > 0
               ? '点卡片看大图 · 大图点击重播'
               : '添加关系后可点卡片听语音'}
@@ -579,6 +634,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+  },
+  cancelButton: {
+    minWidth: 68,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cancelButtonText: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 16,
   },
   editButtonActive: {
     backgroundColor: colors.primary,

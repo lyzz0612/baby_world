@@ -36,9 +36,6 @@ import {
 } from '@/src/services/familyRecordingStore';
 import {
   getDefaultVoiceProfiles,
-  hasDistinctVoiceChoices,
-  listZhVoiceOptions,
-  type ZhVoiceOption,
 } from '@/src/services/familyVoice';
 import { colors } from '@/src/theme/colors';
 
@@ -74,17 +71,12 @@ export function FamilyRelationEditor({
   const [detailUri, setDetailUri] = useState<string | null>(null);
   const [removedListImage, setRemovedListImage] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
-  const [voiceOptions, setVoiceOptions] = useState<ZhVoiceOption[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isRecordingBusy, setIsRecordingBusy] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);
   const voicePresets = useMemo(() => getDefaultVoiceProfiles(), []);
-  const showSystemVoices = useMemo(
-    () => hasDistinctVoiceChoices(voiceOptions),
-    [voiceOptions]
-  );
 
   useEffect(() => {
     if (!visible || !relation) return;
@@ -97,11 +89,6 @@ export function FamilyRelationEditor({
     setRemovedListImage(false);
     void getFamilyRecordingUri(relation.id).then(setRecordingUri);
   }, [visible, relation, listImageUri, detailImageUri]);
-
-  useEffect(() => {
-    if (!visible) return;
-    void listZhVoiceOptions().then(setVoiceOptions);
-  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -254,9 +241,12 @@ export function FamilyRelationEditor({
   if (!draft) return null;
 
   const editorWidth = Math.min(width - 32, 520);
-  const previewHeight = Math.min(Math.round((editorWidth - 72) * 0.22), 120);
-  const listPreviewSize = previewHeight;
-  const detailPreviewWidth = Math.round(previewHeight * (4 / 3));
+  const cardInnerWidth = editorWidth - 32 - 28;
+  const imageGridWidth = Math.round(cardInnerWidth * 0.92);
+  const imageGridGap = 12;
+  const listPreviewSize = Math.round(((imageGridWidth - imageGridGap) * 3) / 7);
+  const previewHeight = listPreviewSize;
+  const detailPreviewWidth = Math.round(listPreviewSize * (4 / 3));
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -273,7 +263,7 @@ export function FamilyRelationEditor({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>形象</Text>
               <View style={styles.sectionCard}>
-                <View style={styles.imageGrid}>
+                <View style={[styles.imageGrid, { width: imageGridWidth }]}>
                   <Pressable
                     style={[styles.listPreview, { width: listPreviewSize, height: listPreviewSize }]}
                     onPress={() => void pickImage('list')}
@@ -401,54 +391,44 @@ export function FamilyRelationEditor({
                     </Text>
 
                     <Text style={styles.fieldLabel}>音色风格</Text>
-                    <View style={styles.chipGrid}>
-                      {voicePresets.map((preset) => {
-                        const active =
-                          draft.voiceProfile.gender === preset.profile.gender &&
-                          draft.voiceProfile.age === preset.profile.age;
-                        return (
-                          <Pressable
-                            key={preset.id}
-                            style={[styles.chipGridItem, styles.chip, active && styles.chipActive]}
-                            onPress={() =>
-                              updateDraft({
-                                voiceProfile: preset.profile,
-                                ttsVoiceId: undefined,
-                              })
-                            }
-                          >
-                            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                              {preset.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+                    <View style={styles.chipRows}>
+                      <View style={styles.chipRow}>
+                        {voicePresets.slice(0, 3).map((preset) => {
+                          const active =
+                            draft.voiceProfile.gender === preset.profile.gender &&
+                            draft.voiceProfile.age === preset.profile.age;
+                          return (
+                            <Pressable
+                              key={preset.id}
+                              style={[styles.chip, active && styles.chipActive]}
+                              onPress={() => updateDraft({ voiceProfile: preset.profile })}
+                            >
+                              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                                {preset.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.chipRow}>
+                        {voicePresets.slice(3).map((preset) => {
+                          const active =
+                            draft.voiceProfile.gender === preset.profile.gender &&
+                            draft.voiceProfile.age === preset.profile.age;
+                          return (
+                            <Pressable
+                              key={preset.id}
+                              style={[styles.chip, active && styles.chipActive]}
+                              onPress={() => updateDraft({ voiceProfile: preset.profile })}
+                            >
+                              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                                {preset.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
                     </View>
-
-                    {showSystemVoices && (
-                      <>
-                        <Text style={styles.fieldLabel}>指定发音人</Text>
-                        <View style={styles.chipGrid}>
-                          {voiceOptions.map((option) => {
-                            const active = draft.ttsVoiceId === option.id;
-                            return (
-                              <Pressable
-                                key={option.id}
-                                style={[styles.chipGridItemWide, styles.chip, active && styles.chipActive]}
-                                onPress={() => updateDraft({ ttsVoiceId: option.id })}
-                              >
-                                <Text
-                                  style={[styles.chipText, active && styles.chipTextActive]}
-                                  numberOfLines={1}
-                                >
-                                  {option.label}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </>
-                    )}
                   </View>
                 ) : (
                   <View style={styles.voiceBlock}>
@@ -591,6 +571,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    alignSelf: 'center',
   },
   listPreview: {
     borderRadius: 14,
@@ -704,24 +685,17 @@ const styles = StyleSheet.create({
   voiceBlock: {
     marginTop: 12,
   },
-  chipGrid: {
+  chipRows: {
+    gap: 8,
+  },
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  chipGridItem: {
-    width: '31%',
-    alignItems: 'center',
-  },
-  chipGridItemWide: {
-    minWidth: '47%',
-    flexGrow: 1,
-    alignItems: 'center',
-  },
   chip: {
-    width: '100%',
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: '#F0F0F0',
   },
@@ -731,8 +705,7 @@ const styles = StyleSheet.create({
   chipText: {
     color: '#666',
     fontWeight: '600',
-    fontSize: 12,
-    textAlign: 'center',
+    fontSize: 13,
   },
   chipTextActive: {
     color: '#fff',
