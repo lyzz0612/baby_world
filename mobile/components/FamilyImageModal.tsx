@@ -9,10 +9,14 @@ type Props = {
   onReplay: () => void;
 };
 
+/** 横图弹窗上限（较原 560×320 放大约 1/3） */
+const MODAL_MAX_WIDTH = 747;
+const MODAL_MAX_HEIGHT = 427;
+
 export function FamilyImageModal({ visible, relation, imageUri, onClose, onReplay }: Props) {
   const { width, height } = useWindowDimensions();
-  const modalWidth = Math.min(width * 0.88, 560, width - 48);
-  const modalHeight = Math.min(modalWidth * 0.72, height * 0.42, 320);
+  const modalWidth = Math.min(width * 0.88, MODAL_MAX_WIDTH, width - 48);
+  const modalHeight = Math.min(modalWidth * 0.75, height * 0.56, MODAL_MAX_HEIGHT);
 
   if (!relation) return null;
 

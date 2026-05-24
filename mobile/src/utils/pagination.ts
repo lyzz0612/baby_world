@@ -109,7 +109,7 @@ export function getFamilyGridLayout(screenWidth: number, screenHeight: number): 
   let rowGap: number;
 
   if (screenWidth >= 1200) {
-    numColumns = 5;
+    numColumns = 4;
     gap = 52;
     rowGap = 60;
   } else if (screenWidth >= 900) {
