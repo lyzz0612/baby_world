@@ -22,6 +22,10 @@ import { FamilyImageModal } from '@/components/FamilyImageModal';
 import { FamilyRelationEditor } from '@/components/FamilyRelationEditor';
 import { ScreenBackground } from '@/components/ScreenBackground';
 import type { FamilyRelation } from '@/src/data/familyRelations';
+import {
+  familyModalCloseDelayMs,
+  getFamilyModalCloseDelaySec,
+} from '@/src/services/appSettingsStore';
 import { audioService } from '@/src/services/audioService';
 import { deleteFamilyImagesForId, deleteFamilyListImage, getFamilyImageMap } from '@/src/services/familyImageStore';
 import { deleteFamilyRecording } from '@/src/services/familyRecordingStore';
@@ -74,6 +78,9 @@ export default function FamilyScreen() {
   const [editorListUri, setEditorListUri] = useState<string | null>(null);
   const [editorDetailUri, setEditorDetailUri] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [modalCloseDelayMs, setModalCloseDelayMs] = useState(
+    familyModalCloseDelayMs(0.5)
+  );
 
   const playTokenRef = useRef(0);
   const itemLayoutsRef = useRef(new Map<string, LayoutRect>());
@@ -132,10 +139,20 @@ export default function FamilyScreen() {
     void refreshAll();
   }, [refreshAll]);
 
+  const refreshModalCloseDelay = useCallback(async () => {
+    const sec = await getFamilyModalCloseDelaySec();
+    setModalCloseDelayMs(familyModalCloseDelayMs(sec));
+  }, []);
+
+  useEffect(() => {
+    void refreshModalCloseDelay();
+  }, [refreshModalCloseDelay]);
+
   useFocusEffect(
     useCallback(() => {
       void refreshAll();
-    }, [refreshAll])
+      void refreshModalCloseDelay();
+    }, [refreshAll, refreshModalCloseDelay])
   );
 
   const closeModal = useCallback(() => {
@@ -695,6 +712,7 @@ export default function FamilyScreen() {
           visible={modalRelation != null}
           relation={modalRelation}
           imageUri={modalImageUri}
+          closeDelayMs={modalCloseDelayMs}
           onClose={closeModal}
           onReplay={() => void replayModal()}
         />

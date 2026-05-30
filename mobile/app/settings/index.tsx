@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as Application from 'expo-application';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
+import Slider from '@react-native-community/slider';
 import {
   ActivityIndicator,
   Image,
@@ -25,6 +26,14 @@ import {
   subscribeUpdateUi,
   syncPendingUpdateUi,
 } from '@/src/services/updateChecker';
+import {
+  FAMILY_MODAL_CLOSE_DELAY_DEFAULT_SEC,
+  FAMILY_MODAL_CLOSE_DELAY_MAX_SEC,
+  FAMILY_MODAL_CLOSE_DELAY_MIN_SEC,
+  FAMILY_MODAL_CLOSE_DELAY_STEP_SEC,
+  getFamilyModalCloseDelaySec,
+  setFamilyModalCloseDelaySec,
+} from '@/src/services/appSettingsStore';
 import type { UpdateUiSnapshot } from '@/src/services/updateStore';
 import { colors } from '@/src/theme/colors';
 
@@ -134,14 +143,25 @@ function UpdateStatusCard({
   );
 }
 
+function formatDelaySec(sec: number): string {
+  return sec.toFixed(1).replace(/\.0$/, '');
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const [ui, setUi] = useState<UpdateUiSnapshot>({ phase: 'idle' });
+  const [familyModalCloseDelaySec, setFamilyModalCloseDelaySecState] = useState(
+    FAMILY_MODAL_CLOSE_DELAY_DEFAULT_SEC
+  );
 
   const versionName = Application.nativeApplicationVersion ?? '未知';
   const versionCode = Application.nativeBuildVersion ?? '—';
 
   useEffect(() => subscribeUpdateUi(setUi), []);
+
+  useEffect(() => {
+    void getFamilyModalCloseDelaySec().then(setFamilyModalCloseDelaySecState);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -193,6 +213,37 @@ export default function SettingsScreen() {
             </Text>
             <Text style={styles.aboutDesc}>
               面向宝宝的启蒙应用，通过认识动物等方式快乐学习、健康成长。
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>关系谱</Text>
+          <View style={styles.preferenceCard}>
+            <Text style={styles.preferenceTitle}>弹窗防误关</Text>
+            <Text style={styles.preferenceDesc}>
+              点卡片打开大图后，需等待 {formatDelaySec(familyModalCloseDelaySec)} 秒才允许点空白关闭，避免连点立刻关掉。
+            </Text>
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>{FAMILY_MODAL_CLOSE_DELAY_MIN_SEC} 秒</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={FAMILY_MODAL_CLOSE_DELAY_MIN_SEC}
+                maximumValue={FAMILY_MODAL_CLOSE_DELAY_MAX_SEC}
+                step={FAMILY_MODAL_CLOSE_DELAY_STEP_SEC}
+                value={familyModalCloseDelaySec}
+                minimumTrackTintColor={colors.primary}
+                maximumTrackTintColor="#E8F5E9"
+                thumbTintColor={colors.primary}
+                onValueChange={setFamilyModalCloseDelaySecState}
+                onSlidingComplete={(value) => setFamilyModalCloseDelaySec(value)}
+                accessibilityLabel="关系弹窗防误关时长"
+              />
+              <Text style={styles.sliderLabel}>{FAMILY_MODAL_CLOSE_DELAY_MAX_SEC} 秒</Text>
+            </View>
+            <Text style={styles.preferenceValue}>
+              当前：{formatDelaySec(familyModalCloseDelaySec)} 秒
+              {familyModalCloseDelaySec === 0 ? '（立即允许关闭）' : ''}
             </Text>
           </View>
         </View>
@@ -435,5 +486,51 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.text,
+  },
+  preferenceCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  preferenceTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  preferenceDesc: {
+    fontSize: 14,
+    color: colors.textMuted,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  sliderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sliderLabel: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: '600',
+    minWidth: 32,
+    textAlign: 'center',
+  },
+  slider: {
+    flex: 1,
+    height: 40,
+  },
+  preferenceValue: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    textAlign: 'center',
   },
 });

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { FamilyRelation } from '@/src/data/familyRelations';
 
@@ -5,6 +6,8 @@ type Props = {
   visible: boolean;
   relation: FamilyRelation | null;
   imageUri?: string | null;
+  /** 打开后需等待该毫秒数才允许关闭（防连点误关） */
+  closeDelayMs?: number;
   onClose: () => void;
   onReplay: () => void;
 };
@@ -13,18 +16,42 @@ type Props = {
 const MODAL_MAX_WIDTH = 747;
 const MODAL_MAX_HEIGHT = 427;
 
-export function FamilyImageModal({ visible, relation, imageUri, onClose, onReplay }: Props) {
+export function FamilyImageModal({
+  visible,
+  relation,
+  imageUri,
+  closeDelayMs = 0,
+  onClose,
+  onReplay,
+}: Props) {
   const { width, height } = useWindowDimensions();
+  const openedAtRef = useRef<number | null>(null);
   const modalWidth = Math.min(width * 0.88, MODAL_MAX_WIDTH, width - 48);
   const modalHeight = Math.min(modalWidth * 0.75, height * 0.56, MODAL_MAX_HEIGHT);
+
+  useEffect(() => {
+    if (visible) {
+      openedAtRef.current = Date.now();
+      return;
+    }
+    openedAtRef.current = null;
+  }, [visible]);
+
+  const tryClose = useCallback(() => {
+    const openedAt = openedAtRef.current;
+    if (openedAt == null) return;
+    if (Date.now() - openedAt < closeDelayMs) return;
+    onClose();
+  }, [closeDelayMs, onClose]);
 
   if (!relation) return null;
 
   const showPhoto = Boolean(imageUri);
+  const closeGuardActive = closeDelayMs > 0;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="关闭">
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={tryClose}>
+      <Pressable style={styles.backdrop} onPress={tryClose} accessibilityLabel="关闭">
         <View style={styles.center} pointerEvents="box-none">
           <Pressable
             style={[
@@ -60,7 +87,9 @@ export function FamilyImageModal({ visible, relation, imageUri, onClose, onRepla
             {relation.name}
           </Text>
           <Text style={styles.hint} pointerEvents="none">
-            点击图片重播 · 点空白处关闭
+            {closeGuardActive
+              ? `点击图片重播 · ${(closeDelayMs / 1000).toFixed(1)} 秒后可点空白关闭`
+              : '点击图片重播 · 点空白处关闭'}
           </Text>
         </View>
       </Pressable>
