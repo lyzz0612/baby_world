@@ -10,7 +10,7 @@ import type { ExpoConfig } from 'expo/config';
  */
 const UPDATE_CHECK_URL =
   process.env.EXPO_PUBLIC_UPDATE_CHECK_URL ??
-  'https://r2.skyup.top/babyworld/update/latest.json';
+  'https://r2.skyup.top/update/latest.json';
 
 const VERSION_NAME = process.env.APP_VERSION_NAME ?? '1.0.0';
 const VERSION_CODE = (() => {
