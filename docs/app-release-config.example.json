@@ -9,8 +9,8 @@
     "baseUrl": "https://download.example.com"
   },
   "paths": {
-    "latestJson": "update/latest.json",
-    "apk": "update/app-release.apk"
+    "latestJson": "babyworld/update/latest.json",
+    "apk": "babyworld/update/app-release.apk"
   },
   "appUpdate": {
     "minSupport": 1
